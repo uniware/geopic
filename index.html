@@ -24,6 +24,8 @@
         const initMapPromise = new Promise(resolve => window.initMap = resolve); // "defer" guarantees we run before google calls back
         document.addEventListener('DOMContentLoaded', async () => onBodyLoad(await initMapPromise));
     </script>
+    <!-- <script defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyA6u053DqLw1AeV23FNM9Tue-A9we6S01o&libraries=maps,marker,places&loading=async&callback=initMap"></script> -->
     <script defer
         src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDKRiPb_ZzkjdgQex00pTv__yOWKQMrD7U&libraries=maps,marker,places&loading=async&callback=initMap"></script>
     <style>
