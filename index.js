@@ -18,6 +18,7 @@ import { authFetch, dbGet, dbPut, escapeHtml, exchangeCodeForToken, FetchError, 
 import { Histogram } from './histogram.js';
 import { ImgPool, MarkerPool } from './pools.js';
 import { Overlay } from './overlay.js';
+import { CLIENT_ID } from './config.js';
 /**
  * ONEDRIVE INTEGRATION AND CREDENTIALS: CODE FLOW WITH PKCE
  * 1. The user navigates to "index.html" and we offer a login button, which they click.
@@ -36,7 +37,6 @@ import { Overlay } from './overlay.js';
  *    we'll try it! and if that doesn't work, we'll try to refresh it.
  *    If the refresh has been revoked, then we remove both from localStorage.
  */
-const CLIENT_ID = 'e5461ba2-5cd4-4a14-ac80-9be4c017b685'; // onedrive microsoft ID for my app, "GEOPIC", used to sign into Onedrive
 localStorage.setItem('client_id', CLIENT_ID);
 // Following are initialized in onBodyLoad()
 let MAP;

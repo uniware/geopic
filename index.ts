@@ -20,6 +20,7 @@ import { authFetch, dbGet, dbPut, escapeHtml, exchangeCodeForToken, FetchError, 
 import { Histogram } from './histogram.js';
 import { ImgPool, MarkerPool } from './pools.js';
 import { Overlay } from './overlay.js';
+import { CLIENT_ID } from './config.js';
 
 /**
  * ONEDRIVE INTEGRATION AND CREDENTIALS: CODE FLOW WITH PKCE
@@ -39,7 +40,6 @@ import { Overlay } from './overlay.js';
  *    we'll try it! and if that doesn't work, we'll try to refresh it.
  *    If the refresh has been revoked, then we remove both from localStorage.
  */
-const CLIENT_ID = '6c133a51-6620-46d1-8aaa-61dd8364dada'; // Replace with your actual client ID
 localStorage.setItem('client_id', CLIENT_ID);
 
 // Following are initialized in onBodyLoad()

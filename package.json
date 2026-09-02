@@ -4,7 +4,7 @@
   "description": "OneDrive GeoPic - Display geolocated photos on Google Maps",
   "main": "index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/generate-config.js && tsc",
     "watch": "tsc --watch"
   },
   "devDependencies": {

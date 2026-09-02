@@ -21,11 +21,16 @@
     <script type="module" src="./index.js"></script>
     <script type="module">
         import { onBodyLoad } from './index.js';
+        import { GOOGLE_MAPS_KEY } from './config.js';
         const initMapPromise = new Promise(resolve => window.initMap = resolve); // "defer" guarantees we run before google calls back
         document.addEventListener('DOMContentLoaded', async () => onBodyLoad(await initMapPromise));
+
+        // Loaded dynamically (rather than a static <script src> tag) so the key can come from
+        // config.ts/config.js, which is gitignored, instead of being committed in this file.
+        const mapsScript = document.createElement('script');
+        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=maps,marker,places&loading=async&callback=initMap`;
+        document.head.appendChild(mapsScript);
     </script>
-    <script defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDKRiPb_ZzkjdgQex00pTv__yOWKQMrD7U&libraries=maps,marker,places&loading=async&callback=initMap"></script>
     <style>
         body {
             font-family: sans-serif;
