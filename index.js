@@ -36,8 +36,7 @@ import { Overlay } from './overlay.js';
  *    we'll try it! and if that doesn't work, we'll try to refresh it.
  *    If the refresh has been revoked, then we remove both from localStorage.
  */
-// const CLIENT_ID = 'e5461ba2-5cd4-4a14-ac80-9be4c017b685'; // onedrive microsoft ID for my app, "GEOPIC", used to sign into Onedrive
-const CLIENT_ID = '6c133a51-6620-46d1-8aaa-61dd8364dada'; // Replace with your actual client ID
+const CLIENT_ID = 'e5461ba2-5cd4-4a14-ac80-9be4c017b685'; // onedrive microsoft ID for my app, "GEOPIC", used to sign into Onedrive
 localStorage.setItem('client_id', CLIENT_ID);
 // Following are initialized in onBodyLoad()
 let MAP;
@@ -81,25 +80,13 @@ export async function onBodyLoad() {
     showCurrentGeodata();
     // Process OAuth code if present
     if (code) {
-        console.log('OAuth callback received with code parameter');
         const code_verifier = sessionStorage.getItem('code_verifier');
-        console.log('Code verifier from sessionStorage:', code_verifier ? 'present' : 'MISSING');
-        if (!code_verifier) {
-            console.error('OAuth Error: code_verifier not found in sessionStorage. This might indicate a session issue or cross-origin problem.');
-            alert('Login failed: session verification code not found. Please try logging in again.');
-            sessionStorage.removeItem('code_verifier');
-            return;
-        }
         sessionStorage.removeItem('code_verifier');
         const r = await exchangeCodeForToken(CLIENT_ID, code, code_verifier);
         if (r instanceof FetchError) {
-            console.error('OAuth token exchange failed:', r.message);
-            console.error('Response status:', r.response.status);
-            console.error('Response text:', await r.response.text());
-            alert(`Login failed: ${r.message}. Check console for details.`);
+            console.error(r.message);
         }
         else {
-            console.log('OAuth token exchange successful');
             localStorage.setItem('access_token', r.accessToken);
             localStorage.setItem('refresh_token', r.refreshToken);
         }
@@ -111,12 +98,6 @@ export async function onBodyLoad() {
     // - (accessToken, geoData, fresh|stale) -- user is signed in, geo data from most recent onedrive indexing
     document.getElementById('instructions').innerHTML = '<span class="spinner"></span> checking OneDrive for updates...';
     const r = await authFetch('https://graph.microsoft.com/v1.0/me/drive/special/photos?select=size', noRetryOn429);
-    console.log('OneDrive metadata check response status:', r.status);
-    if (!r.ok) {
-        console.error('OneDrive metadata check failed:', r.status, r.statusText);
-        const errorText = await r.text();
-        console.error('Error details:', errorText);
-    }
     const photosDriveItem = r.ok ? await r.json().catch(() => undefined) : null;
     const status = photosDriveItem && g_geoData ? (g_geoData.size === photosDriveItem.size ? 'fresh' : 'stale') : undefined;
     instruct(status);
@@ -292,10 +273,6 @@ async function installHandlers() {
     });
 }
 function instruct(mode) {
-    console.log('Setting instructions mode:', mode);
-    console.log('Has access_token:', !!localStorage.getItem('access_token'));
-    console.log('Has geoData:', !!g_geoData);
-    console.log('GeoData is sample:', g_geoData?.id === 'sample-data');
     let instructions;
     const title = '<h1><a href="https://github.com/ljw1004/geopic/blob/main/README.md">Geopic</a></h1> ';
     const sample = g_geoData && g_geoData.id === 'sample-data' ? '<br/><b>Showing sample data for now.</b>' : '';
@@ -338,23 +315,16 @@ export async function onLoginClick() {
     const code_verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
     const code_challenge = base64url(new Uint8Array((await crypto.subtle.digest('SHA-256', new TextEncoder().encode(code_verifier)))));
     sessionStorage.setItem('code_verifier', code_verifier);
-    const redirect_uri = window.location.origin + window.location.pathname;
-    console.log('OAuth Debug Info:');
-    console.log('Client ID:', CLIENT_ID);
-    console.log('Redirect URI:', redirect_uri);
-    console.log('Scope:', 'files.read offline_access');
     const params = new URLSearchParams({
         client_id: CLIENT_ID,
         response_type: 'code',
-        redirect_uri: redirect_uri,
+        redirect_uri: window.location.origin + window.location.pathname,
         scope: 'files.read offline_access',
         code_challenge,
         code_challenge_method: 'S256', // means that code_challenge is a SHA256 hash of the code_verifier value, base64url
         state: 'index'
     });
-    const authUrl = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`;
-    console.log('Auth URL:', authUrl);
-    location.href = authUrl;
+    location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params}`;
 }
 /**
  * Handles the logout button click event.
