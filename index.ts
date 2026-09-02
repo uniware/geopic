@@ -39,7 +39,7 @@ import { Overlay } from './overlay.js';
  *    we'll try it! and if that doesn't work, we'll try to refresh it.
  *    If the refresh has been revoked, then we remove both from localStorage.
  */
-const CLIENT_ID = 'e5461ba2-5cd4-4a14-ac80-9be4c017b685'; // onedrive microsoft ID for my app, "GEOPIC", used to sign into Onedrive
+const CLIENT_ID = '6c133a51-6620-46d1-8aaa-61dd8364dada'; // Replace with your actual client ID
 localStorage.setItem('client_id', CLIENT_ID);
 
 // Following are initialized in onBodyLoad()
