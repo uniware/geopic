@@ -4,3 +4,10 @@ node_modules/
 dist/
 build/
 .claude-trace/
+
+# Domain-tied credentials (OneDrive CLIENT_ID, Google Maps key). See config.example.ts.
+# Explicitly listing the compiled outputs too, since this repo (unusually) commits
+# compiled .js/.js.map files alongside their .ts sources.
+config.ts
+config.js
+config.js.map
