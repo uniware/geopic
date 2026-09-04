@@ -211,9 +211,17 @@ async function installHandlers(): Promise<void> {
 
     MAP.addListener('idle', () => boundsChangedByCode = false);
 
+    const DATE_RANGE_LABEL = document.getElementById('date-range-label')!;
     HISTOGRAM.onSelectionChange = (selection) => {
         if (!g_geoData) return;
         g_filter.dateRange = selection;
+        // NOTE: selection.end here is the last selected day itself (histogram.ts's own screen-reader
+        // announcement treats it the same way), so both dates below are shown as inclusive endpoints.
+        DATE_RANGE_LABEL.style.display = selection ? 'block' : 'none';
+        if (selection) {
+            const [start, end] = [numToDate(selection.start).toLocaleDateString(), numToDate(selection.end).toLocaleDateString()];
+            DATE_RANGE_LABEL.textContent = start === end ? start : `${start} – ${end}`;
+        }
         if (g_filter.dateRange && !userHasMapWork) {
             const newBounds = boundsForDateRange(g_geoData, g_filter.dateRange);
             if (newBounds) {
