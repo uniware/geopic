@@ -1,5 +1,5 @@
 /**
- * Copyright (c) Lucian Wischik
+ * Copyright (c) 2026 Yao Andrew Zhao
  */
 /**
  * Template for config.ts, which is gitignored because it holds domain-tied credentials

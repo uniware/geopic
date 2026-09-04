@@ -1,5 +1,6 @@
 /**
  * Copyright (c) Lucian Wischik
+ * Copyright (c) 2026 Yao Andrew Zhao
  */
 
 export class FetchError extends Error {
