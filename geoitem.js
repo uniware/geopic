@@ -131,22 +131,49 @@ async function resolveThumbnails(f, item) {
  * Every discovered GeoItem is sent to the callback as it's discovered.
  * Also human-readable progress updates are sent through the callback to.
  */
-export async function indexImpl(progress, photosDriveItem) {
+export async function indexImpl(progressCallback, photosDriveItem) {
     const waiting = new Map();
     const toProcess = [];
     const toFetch = [createStartWorkItem(photosDriveItem, [])];
-    const stats = { bytesFromCache: 0, bytesProcessed: 0, bytesTotal: photosDriveItem.size, startTime: Date.now() };
+    // INVARIANT: stats.startTime is set once, when indexing begins, and never mutated;
+    // log() reads it each call to derive elapsed wall-clock time for display.
+    // INVARIANT: stats.photosSoFar always equals the total count of GeoItems handed to progressCallback
+    // so far (maintained solely by the progress() wrapper below, the single choke-point all GeoItem[]
+    // batches pass through), so log() can use it together with the existing byte-based completion
+    // fraction (bytesFromCache+bytesProcessed)/bytesTotal to extrapolate an estimated photo count remaining.
+    // This estimate assumes geo-tagged photos are distributed roughly uniformly across bytes, which is
+    // rough but the best available signal since OneDrive only gives us a total byte count upfront, not a photo count.
+    // INVARIANT: stats.subtreesDone counts folders (each folder = one subtree, since indexing is a
+    // recursive walk) that have fully finished processing, incremented exactly once per folder at the
+    // point its WorkItem reaches 'END' state (see below) - whether that folder came from a fresh walk
+    // or was reused wholesale from the OneDrive cache.
+    const stats = { bytesFromCache: 0, bytesProcessed: 0, bytesTotal: photosDriveItem.size, startTime: Date.now(), photosSoFar: 0, subtreesDone: 0 };
+    // Wraps the caller's progressCallback so we can track photosSoFar without duplicating that
+    // bookkeeping at each of indexImpl's several call sites that hand over a GeoItem[] batch.
+    function progress(update) {
+        if (update.length > 0 && typeof update[0] !== 'string')
+            stats.photosSoFar += update.length;
+        progressCallback(update);
+    }
     function log(item) {
         return (s) => {
             const bar = progressBar(stats.bytesFromCache, stats.bytesProcessed, stats.bytesTotal);
+            const elapsedSec = Math.floor((Date.now() - stats.startTime) / 1000);
+            const elapsed = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, '0')}`;
+            const bytesDone = stats.bytesFromCache + stats.bytesProcessed;
+            const remaining = bytesDone > 0
+                ? `~${Math.max(0, Math.round(stats.photosSoFar * stats.bytesTotal / bytesDone) - stats.photosSoFar)} left (est.)`
+                : 'estimating...';
             const folder = item.path.length === 0 ? ['Pictures'] : item.path;
-            progress([`[${bar}]`, folder.join('/'), s || ' ']);
+            progress([`[${bar}] ${elapsed} elapsed, ${stats.photosSoFar} found, ${remaining}, ${stats.subtreesDone} folders done`, folder.join('/'), s || ' ']);
         };
     }
     let lastSuccessfulFetch = performance.now();
     let got429recently = false;
-    // We're doing batch requests, so the 429s come in some of the responses within the batch,
-    // not the batch itself. We'll record whether any of them got "429 Too Many Requests", and if
+    // We're doing batch requests, so the 429/503/504s come in some of the responses within the batch,
+    // not the batch itself. We'll record whether any of them got "429 Too Many Requests",
+    // "503 Service Unavailable", or "504 Gateway Timeout" (the last happens when a heavy request,
+    // e.g. a large $top combined with expand=thumbnails, takes too long for Graph to generate), and if
     // so then the next fetch wll delay.
     while (true) {
         const item = toProcess.shift();
@@ -156,7 +183,7 @@ export async function indexImpl(progress, photosDriveItem) {
             // ========================================
             const cacheResult = item.responses[`cache-${item.data.id}`];
             const childrenResult = item.responses[`children-${item.data.id}`];
-            if (childrenResult.status === 429 || childrenResult.status === 503) {
+            if (childrenResult.status === 429 || childrenResult.status === 503 || childrenResult.status === 504) {
                 toFetch.unshift({ ...item, responses: {} });
                 const secondsSinceSuccess = Math.round((performance.now() - lastSuccessfulFetch) / 1000);
                 log(item)(`throttled for ${secondsSinceSuccess}s`);
@@ -215,6 +242,7 @@ export async function indexImpl(progress, photosDriveItem) {
             // ========================================
             // ========== PROCESS END ITEM ==========
             // ========================================
+            stats.subtreesDone++; // this folder's WorkItem has now reached 'END': its subtree is fully done
             log(item)();
             if (item.path.length === 0)
                 return item.data; // Finished the root folder!

@@ -83,18 +83,23 @@ export function errorResponse(url: string, e: any): Response {
 
 /**
  * Like fetch(), but failures that throw exceptions are also reported as Response errors.
- * The retryOn429 callback is called upon "429 Too Many Requests" or "503 Service Unavailable".
- * If it returns false, this function returns the 429/503 response directly.
- * If it returns true, this function waits 2s for 429, 10s for 503, and retries the request.
+ * The retryOn429 callback is called upon "429 Too Many Requests", "503 Service Unavailable",
+ * "504 Gateway Timeout" (Graph returns 504 when a heavy request, e.g. a large $top combined
+ * with expand=thumbnails, takes too long for its backend to generate), or a thrown network-level
+ * exception (e.g. "Failed to fetch" from a transient connectivity drop, which is just as likely
+ * to be transient as a 503 and matters especially for long unattended indexing runs).
+ * If it returns false, this function returns the 429/503/504 (or synthesized-503-for-exception)
+ * response directly. If it returns true, this function waits 2s for 429, 10s otherwise, and retries.
  */
 export async function myFetch(url: string, retryOn429: () => boolean, options?: RequestInit): Promise<Response> {
     while (true) {
         try {
             const r = await fetch(url, options);
-            if ((r.status !== 429 && r.status != 503)|| !retryOn429()) return r;
+            if ((r.status !== 429 && r.status !== 503 && r.status !== 504) || !retryOn429()) return r;
             await new Promise(resolve => setTimeout(resolve, r.status === 429 ? 2000 : 10000));
         } catch (e) {
-            return errorResponse(url, e);
+            if (!retryOn429()) return errorResponse(url, e);
+            await new Promise(resolve => setTimeout(resolve, 10000));
         }
     }
 }
@@ -110,7 +115,7 @@ export function noRetryOn429(): boolean {
  * A possible retryOn429 strategy, for myFetch. This one retries indefinitely.
  */
 export function indefinitelyRetryOn429(): boolean {
-    console.warn('429 Too Many Requests or 503 Service Unavailable: will retry...');
+    console.warn('429 Too Many Requests, 503 Service Unavailable, 504 Gateway Timeout, or a network-level failure: will retry...');
     return true;
 }
 
