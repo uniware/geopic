@@ -256,6 +256,11 @@ export async function indexImpl(progressCallback, photosDriveItem) {
                 toFetch.sort((a, b) => cacheFilename(a.path).localeCompare(cacheFilename(b.path))); // alphabetical order to finish off subtrees quicker
                 waiting.set(cacheFilename(item.path), item);
             }
+            // Refresh the visible progress line for this folder even when neither branch above happened
+            // to call log() itself (e.g. a folder with subfolders just gets queued into 'waiting' with no
+            // log() call at all; a leaf folder with zero unresolved thumbnails skips resolveThumbnails'
+            // internal log() call too) - otherwise $batch keeps succeeding while the display looks frozen.
+            log(item)();
         }
         else if (item && item.state === 'END') {
             // ========================================
@@ -315,14 +320,31 @@ export async function indexImpl(progressCallback, photosDriveItem) {
             got429recently = false;
             const url = 'https://graph.microsoft.com/v1.0/$batch';
             const body = JSON.stringify({ requests });
-            const batchResponse = await authFetch(url, indefinitelyRetryOn429, {
-                'method': 'POST',
-                'headers': { 'Content-Type': 'application/json' },
-                'body': body
-            });
-            if (!batchResponse.ok)
-                throw new FetchError(`${url}[POST:batch(${requests.length})]`, batchResponse, await batchResponse.text());
-            const batchResult = await batchResponse.json();
+            // A successful connection can still fail while its (often large) response body is being
+            // read/parsed, e.g. a network drop mid-download - a different failure point from the one
+            // myFetch already retries (which only covers the connection attempt itself). We retry the
+            // whole round-trip indefinitely in that case, but let a genuine HTTP-level error (a FetchError,
+            // meaning the connection succeeded and Graph responded with a real non-ok status) propagate.
+            let batchResult;
+            while (true) {
+                const batchResponse = await authFetch(url, indefinitelyRetryOn429, {
+                    'method': 'POST',
+                    'headers': { 'Content-Type': 'application/json' },
+                    'body': body
+                });
+                try {
+                    if (!batchResponse.ok)
+                        throw new FetchError(`${url}[POST:batch(${requests.length})]`, batchResponse, await batchResponse.text());
+                    batchResult = await batchResponse.json();
+                    break;
+                }
+                catch (e) {
+                    if (e instanceof FetchError)
+                        throw e;
+                    console.warn(`Batch response failed to read/parse (${String(e)}): will retry...`);
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                }
+            }
             await postprocessBatchResponse(batchResult, indefinitelyRetryOn429);
             for (const r of batchResult.responses) {
                 const item = thisFetch.find(item => item.requests.some(req => req.id === r.id));
