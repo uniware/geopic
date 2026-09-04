@@ -142,6 +142,16 @@ interface WorkItem {
     data: GeoData; // initialized upon creation with an empty list of geoItems; processor will append to the list
     path: string[]; // Empty for root
     remainingSubfolders: number; // if cache/geoItems is incomplete, this is how many subfolders it still needs
+
+    // The children-listing request is paginated ($top is kept small so each individual page is cheap
+    // for Graph to generate reliably - a folder with thousands of items in one big page was observed to
+    // never successfully complete no matter how many times it was retried). childrenAccumulated holds
+    // every page's DriveItems gathered so far for a START item still being listed; thumbnailReuseMap
+    // holds the id->thumbnailUrl lookup built from a stale-but-present cache file (see below), which
+    // must persist across every page rather than being rebuilt, since it's only available on page 1.
+    // Both are mutated in place and shared by reference across the same WorkItem's re-queued copies.
+    childrenAccumulated: any[];
+    thumbnailReuseMap: Map<string, string>;
 };
 
 function cacheFilename(path: string[]): string {
@@ -160,7 +170,7 @@ function createStartWorkItem(driveItem: any, path: string[]): WorkItem {
             {
                 id: `children-${driveItem.id}`,
                 method: 'GET',
-                url: `/me/drive/items/${driveItem.id}/children?$top=10000&expand=tags,thumbnails&select=name,id,ctag,etag,size,lastModifiedDateTime,folder,file,location,photo,video`
+                url: `/me/drive/items/${driveItem.id}/children?$top=200&expand=tags,thumbnails&select=name,id,ctag,etag,size,lastModifiedDateTime,folder,file,location,photo,video`
             },
             {
                 id: `cache-${driveItem.id}`,
@@ -182,7 +192,9 @@ function createStartWorkItem(driveItem: any, path: string[]): WorkItem {
             geoItems: [],
         },
         path,
-        remainingSubfolders: 0
+        remainingSubfolders: 0,
+        childrenAccumulated: [],
+        thumbnailReuseMap: new Map(),
     };
 }
 
@@ -343,22 +355,38 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
             if (childrenResult.body.error) {
                 throw new FetchError(`${childrenResult.request.url}[child]`, new Response(childrenResult.body, { status: childrenResult.status }), JSON.stringify(childrenResult.body));
             }
-            if (cacheResult.status === 200 && cacheResult.body.size === item.data.size && cacheResult.body.schemaVersion === SCHEMA_VERSION && cacheResult.body.thumbnailsComplete !== false) {
-                stats.bytesFromCache += item.data.size;
-                toProcess.unshift({ ...item, data: cacheResult.body, state: 'END', requests: [], responses: {} });
-                progress(cacheResult.body.geoItems);
-                continue;
-            }
-            const cache: Map<string, string> = new Map(); // if not the whole cache, we'll at least re-use thumbnails
-            if (cacheResult.status === 200) {
-                const cacheGeoData = cacheResult.body as GeoData;
-                for (const cachedItem of cacheGeoData.geoItems.splice(0, cacheGeoData.immediateChildCount)) {
-                    cache.set(cachedItem.id, cachedItem.thumbnailUrl);
+
+            // cacheResult is only present on page 1 (a continuation page's requests contain only the
+            // next children-link, not a repeat cache request) - so the wholesale-reuse shortcut and the
+            // stale-cache thumbnail-reuse Map are only ever considered/built once, on that first page.
+            if (cacheResult !== undefined) {
+                if (cacheResult.status === 200 && cacheResult.body.size === item.data.size && cacheResult.body.schemaVersion === SCHEMA_VERSION && cacheResult.body.thumbnailsComplete !== false) {
+                    stats.bytesFromCache += item.data.size;
+                    toProcess.unshift({ ...item, data: cacheResult.body, state: 'END', requests: [], responses: {} });
+                    progress(cacheResult.body.geoItems);
+                    continue;
+                }
+                if (cacheResult.status === 200) {
+                    const cacheGeoData = cacheResult.body as GeoData;
+                    for (const cachedItem of cacheGeoData.geoItems.splice(0, cacheGeoData.immediateChildCount)) {
+                        item.thumbnailReuseMap.set(cachedItem.id, cachedItem.thumbnailUrl);
+                    }
                 }
             }
 
+            // Accumulate this page, and if Graph says there's another page, fetch only that (not
+            // cache again) before doing anything else with this folder's children.
+            item.childrenAccumulated.push(...childrenResult.body.value);
+            const nextLink: string | undefined = childrenResult.body['@odata.nextLink'];
+            if (nextLink) {
+                const nextUrl = nextLink.replace('https://graph.microsoft.com/v1.0', '');
+                toFetch.push({ ...item, responses: {}, requests: [{ id: `children-${item.data.id}`, method: 'GET', url: nextUrl }] });
+                log(item)(`listing children: ${item.childrenAccumulated.length} so far`);
+                continue;
+            }
+
             // Kick off subfolders, and gather immediate children (but resolving their thumbnails is deferred until our finish-action)
-            for (const child of childrenResult.body.value) {
+            for (const child of item.childrenAccumulated) {
                 if (child.folder) {
                     toFetch.push(createStartWorkItem(child, [...item.path, child.name]));
                     item.remainingSubfolders++;
@@ -367,7 +395,7 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
                     if (child.location && child.location.latitude && child.location.longitude && child.thumbnails?.at(0)?.small?.url && child.photo?.takenDateTime) {
                         const folderIndex = 0; // invariant: item.folders[0] will be folder of that workitem
                         const childItem = createGeoItem(child, folderIndex);
-                        if (cache.has(childItem.id)) childItem.thumbnailUrl = cache.get(childItem.id)!;
+                        if (item.thumbnailReuseMap.has(childItem.id)) childItem.thumbnailUrl = item.thumbnailReuseMap.get(childItem.id)!;
                         item.data.geoItems.push(childItem);
                     }
                 }
