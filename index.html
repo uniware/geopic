@@ -152,6 +152,7 @@
 
         #text-filter-container {
             padding: 5px 8px;
+            position: relative;
         }
 
         #text-filter {
@@ -178,6 +179,32 @@
         #text-filter::placeholder {
             color: #999;
             font-style: italic;
+        }
+
+        #place-suggestions {
+            display: none;
+            position: absolute;
+            left: 8px;
+            right: 8px;
+            top: 100%;
+            background: white;
+            border: 1px solid #ccc;
+            border-top: none;
+            border-radius: 0 0 4px 4px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 20;
+        }
+
+        .place-suggestion {
+            padding: 6px 10px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .place-suggestion:hover,
+        .place-suggestion.highlighted {
+            background-color: #f0f0f0;
         }
 
         #thumbnails-scroll-area {
@@ -598,6 +625,7 @@
         <div id="text-filter-container">
             <input type="text" id="text-filter" placeholder="" autocomplete="off" spellcheck="false"
                 style="display: none;" />
+            <div id="place-suggestions"></div>
         </div>
 
         <!-- THE THUMBNAILS! -->
