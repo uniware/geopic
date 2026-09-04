@@ -1,5 +1,6 @@
 /**
  * Copyright (c) Lucian Wischik
+ * Copyright (c) 2026 Yao Andrew Zhao
  */
 /**
  * This single-page html+js app combines your OneDrive photos with an embedded Google Map.

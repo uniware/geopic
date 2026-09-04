@@ -1,5 +1,6 @@
 /**
  * Copyright (c) Lucian Wischik
+ * Copyright (c) 2026 Yao Andrew Zhao
  */
 /**
  * This class is a factory for image markers that belong to a google map,

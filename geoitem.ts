@@ -1,5 +1,6 @@
 /**
  * Copyright (c) Lucian Wischik
+ * Copyright (c) 2026 Yao Andrew Zhao
  */
 
 import { FetchError, authFetch, blobToDataUrl, indefinitelyRetryOn429, multipartUpload, postprocessBatchResponse, progressBar, rateLimitedBlobFetch } from './utils.js';
