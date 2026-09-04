@@ -230,38 +230,105 @@ async function installHandlers(): Promise<void> {
     // (i.e. we treat text/places as a way to navigate, not as a way to filter).
     // If they type more, that goes back to being a text filter.
 
+    /**
+     * google.maps.places.Autocomplete (the widget that used to enhance TEXT_FILTER directly with its
+     * own built-in dropdown) is a legacy API no longer available to new Google Cloud projects, so
+     * place-navigation is reimplemented here on the newer, non-UI AutocompleteSuggestion data API:
+     * we fetch predictions ourselves and render them into #place-suggestions, a plain sibling <div>
+     * of TEXT_FILTER (see index.html) that we show/hide/populate by hand.
+     */
+    const placesLibrary = await google.maps.importLibrary("places") as google.maps.PlacesLibrary;
+    const SUGGESTIONS = document.getElementById('place-suggestions')!;
+    // INVARIANT: sessionToken is set while a suggestions dropdown is open (or about to be), and
+    // cleared once a place is selected (a fresh fetchFields call concludes the billing session) or
+    // the filter text is cleared. currentPredictions/highlightedIndex describe what's currently shown.
+    let sessionToken: google.maps.places.AutocompleteSessionToken | undefined;
+    let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+    let currentPredictions: google.maps.places.PlacePrediction[] = [];
+    let highlightedIndex = -1;
+
+    function hidePlaceSuggestions(): void {
+        SUGGESTIONS.style.display = 'none';
+        SUGGESTIONS.innerHTML = '';
+        currentPredictions = [];
+        highlightedIndex = -1;
+    }
+
+    function highlightPlaceSuggestion(): void {
+        Array.from(SUGGESTIONS.children).forEach((el, i) => el.classList.toggle('highlighted', i === highlightedIndex));
+    }
+
+    function renderPlaceSuggestions(predictions: google.maps.places.PlacePrediction[]): void {
+        currentPredictions = predictions;
+        highlightedIndex = -1;
+        if (predictions.length === 0) { hidePlaceSuggestions(); return; }
+        SUGGESTIONS.innerHTML = predictions.map((p, i) => `<div class="place-suggestion" data-index="${i}">${escapeHtml(p.text.text)}</div>`).join('');
+        SUGGESTIONS.style.display = 'block';
+        Array.from(SUGGESTIONS.children).forEach((el, i) => el.addEventListener('click', () => selectPlaceSuggestion(predictions[i])));
+    }
+
+    async function selectPlaceSuggestion(prediction: google.maps.places.PlacePrediction): Promise<void> {
+        const place = prediction.toPlace();
+        await place.fetchFields({ fields: ['location', 'viewport'] });
+        sessionToken = undefined; // the billing session concludes once fetchFields is called
+        hidePlaceSuggestions();
+        if (place.location) {
+            MAP.setCenter(place.location);
+            if (place.viewport) MAP.fitBounds(place.viewport);
+            else MAP.setZoom(14);
+        }
+        TEXT_FILTER.value = '';
+        TEXT_FILTER.dispatchEvent(new Event('input'));
+    }
+
+    function onPlaceSuggestionsKeydown(e: KeyboardEvent): void {
+        if (e.key === 'Escape' && TEXT_FILTER.value) {
+            TEXT_FILTER.value = '';
+            TEXT_FILTER.dispatchEvent(new Event('input'));
+        } else if (e.key === 'ArrowDown' && currentPredictions.length > 0) {
+            e.preventDefault();
+            highlightedIndex = Math.min(highlightedIndex + 1, currentPredictions.length - 1);
+            highlightPlaceSuggestion();
+        } else if (e.key === 'ArrowUp' && currentPredictions.length > 0) {
+            e.preventDefault();
+            highlightedIndex = Math.max(highlightedIndex - 1, 0);
+            highlightPlaceSuggestion();
+        } else if (e.key === 'Enter' && highlightedIndex >= 0 && highlightedIndex < currentPredictions.length) {
+            e.preventDefault();
+            selectPlaceSuggestion(currentPredictions[highlightedIndex]);
+        }
+    }
+
+    function onFilterTextChangedForPlaceSuggestions(value: string): void {
+        clearTimeout(debounceTimer);
+        const text = value.trim();
+        if (!text) { hidePlaceSuggestions(); sessionToken = undefined; return; }
+        debounceTimer = setTimeout(async () => {
+            if (!sessionToken) sessionToken = new placesLibrary.AutocompleteSessionToken();
+            const { suggestions } = await placesLibrary.AutocompleteSuggestion.fetchAutocompleteSuggestions({
+                input: value,
+                includedPrimaryTypes: ['country', 'locality', 'point_of_interest'],
+                sessionToken,
+            });
+            if (TEXT_FILTER.value.trim() !== text) return; // stale response - the filter text has since changed again
+            renderPlaceSuggestions(suggestions.map(s => s.placePrediction).filter((p): p is google.maps.places.PlacePrediction => p !== null));
+        }, 250);
+    }
+
+    // Attached only now that everything the closures reference above (SUGGESTIONS, placesLibrary,
+    // the functions themselves) is fully initialized - these must not run any earlier, since
+    // importLibrary("places") above is itself asynchronous.
     TEXT_FILTER.addEventListener('input', () => {
         if (!g_geoData) return;
         const text = TEXT_FILTER.value.trim().toLowerCase();
         g_filter.text = text ? text : undefined;
         TEXT_FILTER.classList.toggle('filter-glow', Boolean(g_filter.text));
         showCurrentGeodata();
+        onFilterTextChangedForPlaceSuggestions(TEXT_FILTER.value);
     });
-
-    TEXT_FILTER.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && TEXT_FILTER.value) {
-            TEXT_FILTER.value = '';
-            TEXT_FILTER.dispatchEvent(new Event('input'));
-        }
-    });
-
-
-    const placesLibrary = await google.maps.importLibrary("places") as google.maps.PlacesLibrary;
-    const autocomplete = new placesLibrary.Autocomplete(TEXT_FILTER, {
-        types: ['country', 'locality', 'point_of_interest'],
-        fields: ['place_id', 'name', 'formatted_address', 'geometry']
-    });
-    autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        if (place.geometry?.location) {
-            MAP.setCenter(place.geometry.location);
-            if (place.geometry.viewport) MAP.fitBounds(place.geometry.viewport);
-            else MAP.setZoom(14);
-            TEXT_FILTER.value = '';
-            TEXT_FILTER.dispatchEvent(new Event('input'));
-        } else {
-            TEXT_FILTER.dispatchEvent(new Event('input'));
-        }
+    TEXT_FILTER.addEventListener('keydown', onPlaceSuggestionsKeydown);
+    document.addEventListener('click', (e) => {
+        if (!SUGGESTIONS.contains(e.target as Node) && e.target !== TEXT_FILTER) hidePlaceSuggestions();
     });
 
     OVERLAY.siblingGetter = (id, direction) => {
