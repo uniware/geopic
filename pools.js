@@ -121,7 +121,7 @@ export class MarkerPool {
             img.src = src;
         if (img.className !== imgClassName)
             img.className = imgClassName;
-        const listener = onClick ? marker.addListener('click', onClick) : undefined;
+        const listener = onClick ? marker.addListener('gmp-click', onClick) : undefined;
         // Final book-keeping. We've established all the invariants described in Markers type.
         this.state.used[kind].set(id, { marker, listener });
         return marker;
