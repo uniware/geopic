@@ -55,6 +55,13 @@ export interface GeoItem {
     name: string; // filename, lowercase
     folderIndex: number; // an index into GeoData.folders[] array
     tags: string[]; // lowercase
+
+    // Date.now() of the most recent failed thumbnail fetch, or undefined if it's never failed (or
+    // last failed but has since succeeded - cleared on success). Some source photos are permanently
+    // unable to be thumbnailed by Microsoft's service (see resolveThumbnails), but "permanently" is
+    // only true as of today - retried on a cooldown (not never, and not every single re-index) in
+    // case Microsoft's side gets fixed later.
+    thumbnailFailedAt?: number | undefined;
 }
 
 /**
@@ -264,15 +271,24 @@ async function resolveThumbnails(f: (s: string) => void, item: WorkItem, checkpo
         f(`making thumbnails ${pct}${throttled ? ' (throttled)' : ''}`);
     }
 
-    const unresolved = item.data.geoItems.filter(geo => !geo.thumbnailUrl.startsWith('data:'));
+    // A photo whose thumbnail fetch failed for a reason other than 429 (rateLimitedBlobFetch already
+    // retries 429s internally) is left alone for RETRY_COOLDOWN_MS before we ask again, rather than
+    // either retrying it every single re-index forever, or giving up on it permanently - some of these
+    // failures come from Microsoft's own service being unable to process a specific source image today,
+    // which could change on their end later, so we don't want to stop checking altogether.
+    const RETRY_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 1 week
+    const now = Date.now();
+    const unresolved = item.data.geoItems.filter(geo => !geo.thumbnailUrl.startsWith('data:') && (geo.thumbnailFailedAt === undefined || now - geo.thumbnailFailedAt >= RETRY_COOLDOWN_MS));
     for (let start = 0; start < unresolved.length; start += CHUNK_SIZE) {
         const chunk = unresolved.slice(start, start + CHUNK_SIZE);
         const fetches = await rateLimitedBlobFetch((count, _total, throttled) => log(start + count, unresolved.length, throttled), chunk.map(gi => [gi.thumbnailUrl, gi]));
         for (const [blobOrError, geoItem] of fetches) {
             if (blobOrError instanceof Blob) {
                 geoItem.thumbnailUrl = await blobToDataUrl(blobOrError);
+                geoItem.thumbnailFailedAt = undefined;
             } else {
                 console.error(`Failed to fetch thumbnail ${geoItem.thumbnailUrl}: ${blobOrError.message}`);
+                geoItem.thumbnailFailedAt = now;
             }
         }
         if (start + CHUNK_SIZE < unresolved.length) await checkpoint(item.data);
@@ -409,7 +425,10 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
                 await resolveThumbnails(log(item), item, async (data) => {
                     await multipartUpload((count, total) => log(item)(`checkpoint ${Math.floor(count / total * 100)}%`), cacheFilename(item.path), JSON.stringify(data));
                 });
-                item.data.thumbnailsComplete = true;
+                // Not unconditionally true: a cooldown-skipped or still-failing item leaves a non-data:
+                // thumbnailUrl behind, and marking this folder complete anyway would let the wholesale
+                // cache-hit shortcut adopt it forever, since that path never calls resolveThumbnails again.
+                item.data.thumbnailsComplete = item.data.geoItems.every(gi => gi.thumbnailUrl.startsWith('data:'));
                 progress(item.data.geoItems);
                 toFetch.unshift(createEndWorkItem(item));
             } else {
@@ -451,7 +470,9 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
                 await resolveThumbnails(log(parent), parent, async (data) => {
                     await multipartUpload((count, total) => log(parent)(`checkpoint ${Math.floor(count / total * 100)}%`), cacheFilename(parent.path), JSON.stringify(data));
                 });
-                parent.data.thumbnailsComplete = true;
+                // See the matching comment in the leaf-folder branch above: must reflect reality, not
+                // just "resolveThumbnails ran", or a cooldown-skipped item gets stuck forever.
+                parent.data.thumbnailsComplete = parent.data.geoItems.every(gi => gi.thumbnailUrl.startsWith('data:'));
                 progress(parent.data.geoItems.slice(0, parent.data.immediateChildCount));
                 waiting.delete(parentName);
                 const data = JSON.stringify(parent.data);
