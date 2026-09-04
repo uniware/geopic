@@ -32,6 +32,13 @@ export interface GeoData {
     eTag: string; // for cache validation
     immediateChildCount: number; // the immediate children are the first items in geoItems
 
+    // true once every one of this folder's own immediate children (not descendants) has a resolved
+    // data: thumbnail. false means this is a partial checkpoint written mid-way through a folder with
+    // many photos (see resolveThumbnails) - safe to resume individual thumbnails from, but NOT safe to
+    // treat as a fully-finished folder (see the cache-hit check in indexImpl, which requires this to be
+    // true before reusing a cached folder wholesale without re-verifying/completing its thumbnails).
+    thumbnailsComplete: boolean;
+
     folders: string[]; // Lowercase. Within a WorkItem, folders[0] is always that workitem's folder
     geoItems: GeoItem[];
 }
@@ -170,6 +177,7 @@ function createStartWorkItem(driveItem: any, path: string[]): WorkItem {
             cTag: driveItem.cTag,
             eTag: driveItem.eTag,
             immediateChildCount: 0,
+            thumbnailsComplete: false,
             folders: [],
             geoItems: [],
         },
@@ -223,9 +231,18 @@ function createGeoItem(driveItem: any, folderIndex: number): GeoItem {
 }
 
 /**
- * Resolves all thumbnails that haven't yet been resolved.
+ * Resolves all thumbnails that haven't yet been resolved, for item's own immediate children
+ * (mutating each GeoItem's thumbnailUrl to a data: url in place).
+ *
+ * To bound how much work an interruption can lose for a folder with a huge number of photos, this
+ * processes unresolved items in chunks of CHUNK_SIZE, and after every chunk except the last, hands
+ * the still-partial item.data (thumbnailsComplete remains false throughout this function - the
+ * caller sets it true only after this function returns) to `checkpoint`, which persists it to the
+ * OneDrive cache. A resumed run can then reuse already-resolved thumbnails via the cache-Map
+ * fallback in indexImpl instead of re-fetching every thumbnail in the folder from scratch.
  */
-async function resolveThumbnails(f: (s: string) => void, item: WorkItem): Promise<void> {
+async function resolveThumbnails(f: (s: string) => void, item: WorkItem, checkpoint: (data: GeoData) => Promise<void>): Promise<void> {
+    const CHUNK_SIZE = 500;
     let lastPct = "";
     function log(count: number, total: number, throttled: boolean): void {
         const pct = `${Math.floor(count / total * 100)}%`;
@@ -234,15 +251,20 @@ async function resolveThumbnails(f: (s: string) => void, item: WorkItem): Promis
         f(`making thumbnails ${pct}${throttled ? ' (throttled)' : ''}`);
     }
 
-    const fetches = await rateLimitedBlobFetch(log, item.data.geoItems.filter(geo => !geo.thumbnailUrl.startsWith('data:')).map(gi => [gi.thumbnailUrl, gi]));
-    for (const [blobOrError, geoItem] of fetches) {
-        if (blobOrError instanceof Blob) {
-            geoItem.thumbnailUrl = await blobToDataUrl(blobOrError);
-        } else {
-            console.error(`Failed to fetch thumbnail ${geoItem.thumbnailUrl}: ${blobOrError.message}`);
+    const unresolved = item.data.geoItems.filter(geo => !geo.thumbnailUrl.startsWith('data:'));
+    for (let start = 0; start < unresolved.length; start += CHUNK_SIZE) {
+        const chunk = unresolved.slice(start, start + CHUNK_SIZE);
+        const fetches = await rateLimitedBlobFetch((count, _total, throttled) => log(start + count, unresolved.length, throttled), chunk.map(gi => [gi.thumbnailUrl, gi]));
+        for (const [blobOrError, geoItem] of fetches) {
+            if (blobOrError instanceof Blob) {
+                geoItem.thumbnailUrl = await blobToDataUrl(blobOrError);
+            } else {
+                console.error(`Failed to fetch thumbnail ${geoItem.thumbnailUrl}: ${blobOrError.message}`);
+            }
         }
+        if (start + CHUNK_SIZE < unresolved.length) await checkpoint(item.data);
     }
-    if (fetches.length > 0 && lastPct !== '100%') log(100, 100, false); // so it appears as "100%"
+    if (unresolved.length > 0 && lastPct !== '100%') log(unresolved.length, unresolved.length, false); // so it appears as "100%"
 }
 
 
@@ -321,7 +343,7 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
             if (childrenResult.body.error) {
                 throw new FetchError(`${childrenResult.request.url}[child]`, new Response(childrenResult.body, { status: childrenResult.status }), JSON.stringify(childrenResult.body));
             }
-            if (cacheResult.status === 200 && cacheResult.body.size === item.data.size && cacheResult.body.schemaVersion === SCHEMA_VERSION) {
+            if (cacheResult.status === 200 && cacheResult.body.size === item.data.size && cacheResult.body.schemaVersion === SCHEMA_VERSION && cacheResult.body.thumbnailsComplete !== false) {
                 stats.bytesFromCache += item.data.size;
                 toProcess.unshift({ ...item, data: cacheResult.body, state: 'END', requests: [], responses: {} });
                 progress(cacheResult.body.geoItems);
@@ -355,7 +377,10 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
 
             // Book-keeping: either our finish-action can be done now, or is done by our final subfolder.
             if (item.remainingSubfolders === 0) {
-                await resolveThumbnails(log(item), item);
+                await resolveThumbnails(log(item), item, async (data) => {
+                    await multipartUpload((count, total) => log(item)(`checkpoint ${Math.floor(count / total * 100)}%`), cacheFilename(item.path), JSON.stringify(data));
+                });
+                item.data.thumbnailsComplete = true;
                 progress(item.data.geoItems);
                 toFetch.unshift(createEndWorkItem(item));
             } else {
@@ -389,7 +414,10 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
             }
             parent.remainingSubfolders--;
             if (parent.remainingSubfolders === 0) {
-                await resolveThumbnails(log(parent), parent);
+                await resolveThumbnails(log(parent), parent, async (data) => {
+                    await multipartUpload((count, total) => log(parent)(`checkpoint ${Math.floor(count / total * 100)}%`), cacheFilename(parent.path), JSON.stringify(data));
+                });
+                parent.data.thumbnailsComplete = true;
                 progress(parent.data.geoItems.slice(0, parent.data.immediateChildCount));
                 waiting.delete(parentName);
                 const data = JSON.stringify(parent.data);

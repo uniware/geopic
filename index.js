@@ -412,6 +412,7 @@ export async function onIndexClick() {
             cTag: '',
             eTag: '',
             immediateChildCount: 0,
+            thumbnailsComplete: true, // vacuously true: this is a placeholder with no items yet, never written to any folder's cache
             folders: [],
             geoItems: [],
         };
