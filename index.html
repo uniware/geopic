@@ -245,6 +245,13 @@
             outline-offset: -2px;
         }
 
+        #date-range-label {
+            text-align: center;
+            font-size: 12px;
+            color: #555;
+            padding: 2px 8px 0;
+        }
+
         .histogram-chart {
             position: relative;
             height: 60px;
@@ -618,6 +625,9 @@
                 <!-- Screen reader announcements -->
                 <div class="histogram-sr-announcements" aria-live="polite" aria-atomic="true"></div>
             </div>
+
+            <!-- Selected date-range text, shown only when a period is selected -->
+            <div id="date-range-label" style="display: none;"></div>
         </div>
 
         <!-- THE TEXT FILTER! -->
