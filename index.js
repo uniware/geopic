@@ -284,7 +284,7 @@ function instruct(mode) {
             + `<pre id="progress">[...preparing bulk indexer...]</pre>`;
     }
     else if (mode === 'fresh') {
-        instructions = `${title} ${g_geoData?.geoItems.length} photos <span title="logout" id="logout">\u23CF</span>`;
+        instructions = `${title} ${g_geoData?.geoItems.length} photos <span id="index">Reindex...</span> <span title="logout" id="logout">\u23CF</span>`;
     }
     else if (mode === 'stale') {
         instructions = `${title} <span id="index">Index all new photos...</span> <span title="logout" id="logout">\u23CF</span>${sample}`;
