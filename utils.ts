@@ -23,16 +23,21 @@ export function blobToDataUrl(blob: Blob): Promise<string> {
 /**
  * This helper cleans up some idiosyncrasies of the batch response:
  * 1. GET :/content usually returns 302 redirect, which "fetch" follows automatically, but "batch" doesn't.
- *    This function therefore follows redirects. Similar to fetchAsync, the body is either JSON object or string,
- *    depending on whether content-type includes 'application/json'.
+ *    This function therefore follows redirects.
  * 2. GET :/content with error response, and PUT :/content with its driveItem response, claim to return application/json body.
  *    They do that when fetched individually. But in the batch response, they return a base64-utf8-encoded string of that json.
  *    This is mentioned here https://learn.microsoft.com/en-us/answers/questions/1352007/using-batching-with-the-graph-api-returns-the-body
- *    Problem is, there's no generic way for us to tell! What if the response itself truly was base64?
- *    what if the response was a real string which also happened to be base-64 decodable?
- *    We'll recover one common case (where the response claims to be content-type application/json but it's a string),
- *    but it's all heuristic and you're basically on your own.
- * 
+ *
+ * Content-Type headers are NOT a reliable signal for whether a body is actually JSON: cache files written
+ * via multipartUpload() never have a Content-Type set at upload time, and OneDrive's own inferred
+ * content-type for them isn't guaranteed to say application/json - this was observed in production to
+ * crash indexImpl's cache-reading logic, which expects cacheResult.body to already be a parsed GeoData
+ * object and instead got a raw string. So instead of trusting Content-Type, we sniff the actual content:
+ * try to parse it as JSON (after base64-decoding, for the batch-embedded case), and fall back to leaving
+ * it as the original string/text if that fails. This is safe either way: genuine non-JSON text will
+ * simply fail to parse as JSON, or fail to even base64-decode (real text essentially never happens to
+ * also be valid base64).
+ *
  * This function modifies its argument in place, and also returns it for convenience.
  */
 export async function postprocessBatchResponse(response: any, retryOn429: () => boolean): Promise<any> {
@@ -44,14 +49,19 @@ export async function postprocessBatchResponse(response: any, retryOn429: () => 
                 rr.headers.forEach((value, key) => r.headers[key] = value);
                 r.status = rr.status;
                 try {
-                    r.body = (rr.headers.get('Content-Type')?.includes('application/json')) ? await rr.json() : await rr.text();
+                    const text = await rr.text();
+                    try { r.body = JSON.parse(text); } catch { r.body = text; }
                 } catch (e) {
                     console.log(String(e));
                 }
             }));
         }
-        else if (r["headers"]?.["Content-Type"]?.includes('application/json') && typeof r.body === 'string') {
-            r.body = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(r.body), (m) => m.codePointAt(0) as number)));
+        else if (typeof r.body === 'string') {
+            try {
+                r.body = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(r.body), (m) => m.codePointAt(0) as number)));
+            } catch {
+                // not base64-encoded JSON after all - leave r.body as the original string
+            }
         }
     }
     await Promise.all(promises);
