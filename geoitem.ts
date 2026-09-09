@@ -167,6 +167,19 @@ function cacheFilename(path: string[]): string {
     return path.join('_') + '.json';
 }
 
+/**
+ * True if `body` looks like a usable GeoData object - specifically that geoItems is actually an
+ * array, since that's the field the cache-reuse logic below indexes into. A cache file's body can
+ * fail to look like this despite its HTTP status being 200: e.g. a large download (tens of MB for
+ * an aggregate root cache with thousands of photos) that gets truncated mid-transfer will fail to
+ * parse as JSON and be left as a raw string by postprocessBatchResponse's fallback (see utils.ts).
+ * Treating an invalid body as "no usable cache" rather than trusting it means the affected folder
+ * just gets fully reprocessed, same as if its cache file had never existed.
+ */
+function isValidCachedGeoData(body: any): body is GeoData {
+    return body !== null && typeof body === 'object' && Array.isArray(body.geoItems) && typeof body.immediateChildCount === 'number';
+}
+
 
 /**
  * Creates a START WorkItem with two requests, one for children and one for cache.
@@ -377,14 +390,14 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
             // next children-link, not a repeat cache request) - so the wholesale-reuse shortcut and the
             // stale-cache thumbnail-reuse Map are only ever considered/built once, on that first page.
             if (cacheResult !== undefined) {
-                if (cacheResult.status === 200 && cacheResult.body.size === item.data.size && cacheResult.body.schemaVersion === SCHEMA_VERSION && cacheResult.body.thumbnailsComplete !== false) {
+                if (cacheResult.status === 200 && isValidCachedGeoData(cacheResult.body) && cacheResult.body.size === item.data.size && cacheResult.body.schemaVersion === SCHEMA_VERSION && cacheResult.body.thumbnailsComplete !== false) {
                     stats.bytesFromCache += item.data.size;
                     toProcess.unshift({ ...item, data: cacheResult.body, state: 'END', requests: [], responses: {} });
                     progress(cacheResult.body.geoItems);
                     continue;
                 }
-                if (cacheResult.status === 200) {
-                    const cacheGeoData = cacheResult.body as GeoData;
+                if (cacheResult.status === 200 && isValidCachedGeoData(cacheResult.body)) {
+                    const cacheGeoData = cacheResult.body;
                     for (const cachedItem of cacheGeoData.geoItems.splice(0, cacheGeoData.immediateChildCount)) {
                         item.thumbnailReuseMap.set(cachedItem.id, cachedItem.thumbnailUrl);
                     }
