@@ -215,11 +215,11 @@ async function installHandlers(): Promise<void> {
     HISTOGRAM.onSelectionChange = (selection) => {
         if (!g_geoData) return;
         g_filter.dateRange = selection;
-        // NOTE: selection.end here is the last selected day itself (histogram.ts's own screen-reader
-        // announcement treats it the same way), so both dates below are shown as inclusive endpoints.
+        // selection.end is the last selected day itself (inclusive, per the Filter.dateRange invariant),
+        // so both dates below are shown as inclusive endpoints. timeZone:'UTC' per the Numdate invariant.
         DATE_RANGE_LABEL.style.display = selection ? 'block' : 'none';
         if (selection) {
-            const [start, end] = [numToDate(selection.start).toLocaleDateString(), numToDate(selection.end).toLocaleDateString()];
+            const [start, end] = [numToDate(selection.start).toLocaleDateString(undefined, { timeZone: 'UTC' }), numToDate(selection.end).toLocaleDateString(undefined, { timeZone: 'UTC' })];
             DATE_RANGE_LABEL.textContent = start === end ? start : `${start} – ${end}`;
         }
         if (g_filter.dateRange && !userHasMapWork) {
@@ -471,7 +471,7 @@ function showCurrentGeodata(): void {
     const thumbnails = clusters.flatMap(cluster => cluster.somePassFilterItems.slice(0, Math.ceil(cluster.somePassFilterItems.length * fraction))).sort((a, b) => a.date - b.date);
     for (const item of thumbnails) {
         const img = IMG_POOL.add(item.id, item.thumbnailUrl);
-        img.title = `${numToDate(item.date).toLocaleDateString()} - ${escapeHtml(item.name)}`;
+        img.title = `${numToDate(item.date).toLocaleDateString(undefined, { timeZone: 'UTC' })} -${escapeHtml(item.name)}`;
         img.setAttribute('data-id', item.id);
         img.onclick = () => showItem(item);
     }

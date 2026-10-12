@@ -33,10 +33,10 @@ function expandToMinimum(range) {
     while (true) {
         if (diff(start, end) + 1 >= minimumDays)
             break;
-        start.setDate(start.getDate() - 1);
+        start.setUTCDate(start.getUTCDate() - 1);
         if (diff(start, end) + 1 >= minimumDays)
             break;
-        end.setDate(end.getDate() + 1);
+        end.setUTCDate(end.getUTCDate() + 1);
     }
     return { start: dateToNum(start), end: dateToNum(end) };
 }
@@ -397,7 +397,7 @@ export class Histogram {
         const x = event.clientX - rect.left;
         const findLast = (bar) => {
             const d = numToDate(this.bi.find(bar + 1)); // first day of the next bar
-            d.setDate(d.getDate() - 1); // last day of current bar
+            d.setUTCDate(d.getUTCDate() - 1); // last day of current bar
             return dateToNum(d);
         };
         if (this.currentDrag?.type === 'pan') {
@@ -412,8 +412,8 @@ export class Histogram {
             // Calculate new bounds based on deltaDays
             const startDate = numToDate(this.currentDrag.initialBounds.start);
             const endDate = numToDate(this.currentDrag.initialBounds.end);
-            startDate.setDate(startDate.getDate() + deltaDays);
-            endDate.setDate(endDate.getDate() + deltaDays);
+            startDate.setUTCDate(startDate.getUTCDate() + deltaDays);
+            endDate.setUTCDate(endDate.getUTCDate() + deltaDays);
             const newBounds = { start: dateToNum(startDate), end: dateToNum(endDate) };
             if (newBounds.start !== this.bounds.start || newBounds.end !== this.bounds.end) {
                 this.bounds = newBounds;
@@ -429,14 +429,11 @@ export class Histogram {
             const bar = Math.floor(x / rect.width * this.bi.count);
             const date = this.bi.find(bar);
             this.currentDrag.currentDate = date;
-            this.selection = {
-                start: Math.min(this.currentDrag.startDate, date),
-                end: Math.max(this.currentDrag.startDate, date)
-            };
-            // in case of months/weeks view, our end date will be the last day of the bar.
-            if (event.clientX > this.currentDrag.startX) {
-                this.selection.end = findLast(this.bi.bar(this.selection.end));
-            }
+            // Both startDate and date are bar-start dates (from bi.find). The selection covers both bars
+            // in full: the end is snapped to the last day of its bar, whichever direction the drag goes,
+            // since selection.end is inclusive (see Filter.dateRange). In days view findLast is the identity.
+            const [lo, hi] = [Math.min(this.currentDrag.startDate, date), Math.max(this.currentDrag.startDate, date)];
+            this.selection = { start: lo, end: findLast(this.bi.bar(hi)) };
             this.reportSelectionChanged();
             this.recomputeDOM_selectionOverlay(); // recompute selection, but not bars/labels
             this.selectionTooltipLeft.style.display = event.clientX < this.currentDrag.startX ? 'block' : 'none';
@@ -542,8 +539,8 @@ export class Histogram {
                 return;
             const startDate = numToDate(this.bounds.start);
             const endDate = numToDate(this.bounds.end);
-            startDate.setDate(startDate.getDate() + deltaDays);
-            endDate.setDate(endDate.getDate() + deltaDays);
+            startDate.setUTCDate(startDate.getUTCDate() + deltaDays);
+            endDate.setUTCDate(endDate.getUTCDate() + deltaDays);
             this.bounds = { start: dateToNum(startDate), end: dateToNum(endDate) };
             this.saveState();
             this.recomputeDOM_chart();
@@ -571,9 +568,9 @@ export class Histogram {
             const dayCount = dayInterval(this.bounds);
             const daysWidth = Math.max(7, Math.round(dayCount * 0.2)); // 20% of current view, minimum 7 days            
             const start = numToDate(this.bounds.start);
-            start.setDate(start.getDate() + Math.round((dayCount - daysWidth) / 2));
+            start.setUTCDate(start.getUTCDate() + Math.round((dayCount - daysWidth) / 2));
             const end = new Date(start);
-            end.setDate(end.getDate() + daysWidth - 1); // -1 because range is inclusive            
+            end.setUTCDate(end.getUTCDate() + daysWidth - 1); // -1 because range is inclusive            
             this.selection = { start: dateToNum(start), end: dateToNum(end) };
             this.reportSelectionChanged();
             this.saveState();
@@ -592,8 +589,8 @@ export class Histogram {
             const deltaDays = Math.min(maxDeltaDays, Math.max(minDeltaDays, attemptedDelta));
             const newStartDate = numToDate(this.selection.start);
             const newEndDate = numToDate(this.selection.end);
-            newStartDate.setDate(newStartDate.getDate() + deltaDays);
-            newEndDate.setDate(newEndDate.getDate() + deltaDays);
+            newStartDate.setUTCDate(newStartDate.getUTCDate() + deltaDays);
+            newEndDate.setUTCDate(newEndDate.getUTCDate() + deltaDays);
             this.selection = { start: dateToNum(newStartDate), end: dateToNum(newEndDate) };
             this.reportSelectionChanged();
             this.saveState();
@@ -702,7 +699,7 @@ export class Histogram {
                 bar,
                 left: (date) => bar(date) / dayCount * chartWidth,
                 width: chartWidth / dayCount,
-                find: (bar) => dateToNum(new Date(numToDate(this.bounds.start).setDate(numToDate(this.bounds.start).getDate() + bar))),
+                find: (bar) => dateToNum(new Date(numToDate(this.bounds.start).setUTCDate(numToDate(this.bounds.start).getUTCDate() + bar))),
                 count: dayCount,
                 snap: (date) => date,
             };
@@ -721,7 +718,7 @@ export class Histogram {
                 const [startMs, endMs] = [numToDate(this.bounds.start).getTime(), numToDate(this.bounds.end).getTime()];
                 const startSnap = new Date(Math.floor(startMs / SEVEN_DAYS_IN_MS) * SEVEN_DAYS_IN_MS); // first day of first week
                 const endSnap = new Date(Math.ceil(endMs / SEVEN_DAYS_IN_MS) * SEVEN_DAYS_IN_MS);
-                endSnap.setDate(endSnap.getDate() + 6); // final day of final week
+                endSnap.setUTCDate(endSnap.getUTCDate() + 6); // final day of final week
                 bounds = { start: dateToNum(startSnap), end: dateToNum(endSnap) };
                 barCount = dayInterval(bounds) / 7;
                 const bar = (date) => (dayInterval({ start: bounds.start, end: date }) - 1) / 7;
@@ -731,11 +728,11 @@ export class Histogram {
                     bar,
                     left: (date) => bar(date) / barCount * chartWidth,
                     width: chartWidth / barCount,
-                    find: (bar) => dateToNum(new Date(numToDate(bounds.start).setDate(numToDate(bounds.start).getDate() + bar * 7))),
+                    find: (bar) => dateToNum(new Date(numToDate(bounds.start).setUTCDate(numToDate(bounds.start).getUTCDate() + bar * 7))),
                     count: barCount,
                     snap: (date) => {
                         const d = numToDate(bounds.start);
-                        d.setDate(d.getDate() + Math.floor((dayInterval({ start: bounds.start, end: date }) - 1) / 7) * 7);
+                        d.setUTCDate(d.getUTCDate() + Math.floor((dayInterval({ start: bounds.start, end: date }) - 1) / 7) * 7);
                         return dateToNum(d);
                     },
                 };

@@ -9,6 +9,9 @@ const SCHEMA_VERSION = 5;
 
 /**
  * Numdate is a compact way of storing dates, in integer numbers, YYYYMMDD format.
+ * INVARIANT: a Numdate is a timezone-free calendar day. numToDate() maps it to UTC midnight, so any
+ * Date derived from one MUST only be read/stepped with UTC accessors (getUTCDate/setUTCDate etc.) and
+ * formatted with timeZone:'UTC'. Local accessors would shift it by a day west of UTC, or across DST changes.
  */
 export type Numdate = number;
 
@@ -68,7 +71,7 @@ export interface GeoItem {
  * Input to asClusters() -- a filter on which GeoItems to include in the clusters
  */
 export interface Filter {
-    dateRange: { start: Numdate, end: Numdate } | undefined; // in the same "YYYYMMDD" format as GeoItem.date. End is exclusive.
+    dateRange: { start: Numdate, end: Numdate } | undefined; // in the same "YYYYMMDD" format as GeoItem.date. INVARIANT: both ends inclusive (matching Histogram's selection), so start===end means that single day.
     text: string | undefined; // Lowercase
 }
 
@@ -633,7 +636,7 @@ export function asClusters(sw: Position, ne: Position, pixelWidth: number, geoDa
         const y = Math.floor((item.position.lat - swSnap.lat) / tileSize);
         const inBounds = (x >= 0 && x < numTilesX && y >= 0 && y < numTilesY);
         const inFilter = filterText !== undefined && (item.name.includes(filterText) || filterFolders.has(item.folderIndex) || item.tags.some(tag => tag.includes(filterText)));
-        const inDateRange = filter.dateRange === undefined || (item.date >= filter.dateRange.start && item.date < filter.dateRange.end);
+        const inDateRange = filter.dateRange === undefined || (item.date >= filter.dateRange.start && item.date <= filter.dateRange.end); // inclusive end, per Filter.dateRange invariant
         tally[inBounds ? 'inBounds' : 'outBounds'][inFilter ? 'inFilter' : 'outFilter']++;
         if (!inBounds) continue;
         const tile = tiles[y * numTilesX + x];
@@ -647,10 +650,14 @@ export function asClusters(sw: Position, ne: Position, pixelWidth: number, geoDa
     return [tiles.filter(t => t.somePassFilterItems.length > 0 || t.oneFailFilterItem !== undefined), { dateCounts }];
 }
 
+/**
+ * Returns the smallest lat/lng box containing every item dated within dateRange (both ends inclusive,
+ * per the Filter.dateRange invariant), or undefined if no item falls in the range.
+ */
 export function boundsForDateRange(geoData: GeoData, dateRange: { start: Numdate, end: Numdate }): { sw: Position, ne: Position } | undefined {
     let r: { sw: Position, ne: Position } | undefined = undefined;
     for (const item of geoData.geoItems) {
-        const inDateRange = dateRange === undefined || (item.date >= dateRange.start && item.date < dateRange.end);
+        const inDateRange = item.date >= dateRange.start && item.date <= dateRange.end;
         if (!inDateRange) continue;
         if (r === undefined) {
             r = { sw: structuredClone(item.position), ne: structuredClone(item.position) };

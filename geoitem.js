@@ -474,7 +474,7 @@ export function asClusters(sw, ne, pixelWidth, geoData, filter) {
         const y = Math.floor((item.position.lat - swSnap.lat) / tileSize);
         const inBounds = (x >= 0 && x < numTilesX && y >= 0 && y < numTilesY);
         const inFilter = filterText !== undefined && (item.name.includes(filterText) || filterFolders.has(item.folderIndex) || item.tags.some(tag => tag.includes(filterText)));
-        const inDateRange = filter.dateRange === undefined || (item.date >= filter.dateRange.start && item.date < filter.dateRange.end);
+        const inDateRange = filter.dateRange === undefined || (item.date >= filter.dateRange.start && item.date <= filter.dateRange.end); // inclusive end, per Filter.dateRange invariant
         tally[inBounds ? 'inBounds' : 'outBounds'][inFilter ? 'inFilter' : 'outFilter']++;
         if (!inBounds)
             continue;
@@ -490,10 +490,14 @@ export function asClusters(sw, ne, pixelWidth, geoData, filter) {
     }
     return [tiles.filter(t => t.somePassFilterItems.length > 0 || t.oneFailFilterItem !== undefined), { dateCounts }];
 }
+/**
+ * Returns the smallest lat/lng box containing every item dated within dateRange (both ends inclusive,
+ * per the Filter.dateRange invariant), or undefined if no item falls in the range.
+ */
 export function boundsForDateRange(geoData, dateRange) {
     let r = undefined;
     for (const item of geoData.geoItems) {
-        const inDateRange = dateRange === undefined || (item.date >= dateRange.start && item.date < dateRange.end);
+        const inDateRange = item.date >= dateRange.start && item.date <= dateRange.end;
         if (!inDateRange)
             continue;
         if (r === undefined) {
