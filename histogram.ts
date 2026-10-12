@@ -11,7 +11,10 @@ type InclusiveDateRange = { start: Numdate, end: Numdate };
 
 type HistogramBarInfo = {
     granularity: 'days' | 'weeks' | 'months';
-    bounds: InclusiveDateRange; // in months view, this is from the 1st of the first bar to the 31st of the last bar
+    // INVARIANT: covers every bar in full, i.e. bounds.start <= find(0), and bounds.end >= the last day of bar count-1.
+    // Renderers rely on this to filter bar keys (which are bar-start dates). In days view it equals this.bounds;
+    // in weeks view it is snapped to whole weeks; in months view it is from the 1st of the first bar to the 31st of the last bar.
+    bounds: InclusiveDateRange;
     bar: (date: Numdate) => number;  // bar number for this date (also works for out of range bars)
     left: (date: Numdate) => number;  // pixel coordinate of the left edge of the bar encompassing this date
     width: number;  // pixel width of each bar    
@@ -750,14 +753,14 @@ export class Histogram {
                 const SEVEN_DAYS_IN_MS = 1000 * 60 * 60 * 24 * 7;
                 const [startMs, endMs] = [numToDate(this.bounds.start).getTime(), numToDate(this.bounds.end).getTime()];
                 const startSnap = new Date(Math.floor(startMs / SEVEN_DAYS_IN_MS) * SEVEN_DAYS_IN_MS); // first day of first week
-                const endSnap = new Date(Math.ceil(endMs / SEVEN_DAYS_IN_MS) * SEVEN_DAYS_IN_MS);
+                const endSnap = new Date(Math.floor(endMs / SEVEN_DAYS_IN_MS) * SEVEN_DAYS_IN_MS); // first day of final week (floor, not ceil, else we'd add a spurious extra week)
                 endSnap.setUTCDate(endSnap.getUTCDate() + 6); // final day of final week
                 bounds = { start: dateToNum(startSnap), end: dateToNum(endSnap) };
-                barCount = dayInterval(bounds) / 7;
+                barCount = dayInterval(bounds) / 7; // an integer, since both ends are snapped to the week grid
                 const bar = (date: Numdate) => (dayInterval({ start: bounds.start, end: date }) - 1) / 7;
                 bi = {
                     granularity,
-                    bounds: { ...this.bounds },
+                    bounds: { ...bounds }, // the snapped bounds, per the HistogramBarInfo.bounds invariant: this.bounds would drop the first bar, whose key precedes this.bounds.start
                     bar,
                     left: (date) => bar(date) / barCount * chartWidth,
                     width: chartWidth / barCount,

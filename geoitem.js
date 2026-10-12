@@ -23,10 +23,23 @@ export function dateToNum(date) {
     return year * 10000 + month * 100 + day;
 }
 ;
+/**
+ * Returns the OneDrive approot filename that caches the folder at `path` (empty for root).
+ * INVARIANT: injective, even under OneDrive's case-insensitive name comparison. Both the cache files
+ * and indexImpl's 'waiting' map rely on this: a collision would make two folders overwrite each other's
+ * cache, and make an END item look up the wrong parent in 'waiting' (hanging the walk forever).
+ * Proof: within each segment '~' becomes '~~' and '_' becomes '~u', so escaped segments contain no bare '_',
+ * hence joining with '_' is reversible. The escapes are case-insensitively unambiguous ('~U' never arises
+ * from a raw '~'), and sibling folders can't differ only by case. Root uses '_.json', which no non-root path
+ * produces since its first segment is non-empty and can't start with a bare '_'. (Root used to be
+ * 'index.json', which collided with a top-level folder named "index".) Escapes avoid '%' because Graph
+ * URL-decodes the path, which would turn e.g. '%5F' back into '_'.
+ * Folder paths with no '_' or '~' keep the same filename as before this escaping was introduced.
+ */
 function cacheFilename(path) {
     if (path.length === 0)
-        return 'index.json';
-    return path.join('_') + '.json';
+        return '_.json';
+    return path.map(segment => segment.replace(/~/g, '~~').replace(/_/g, '~u')).join('_') + '.json';
 }
 /**
  * True if `body` looks like a usable GeoData object - specifically that geoItems is actually an

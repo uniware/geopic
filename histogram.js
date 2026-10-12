@@ -717,14 +717,14 @@ export class Histogram {
                 const SEVEN_DAYS_IN_MS = 1000 * 60 * 60 * 24 * 7;
                 const [startMs, endMs] = [numToDate(this.bounds.start).getTime(), numToDate(this.bounds.end).getTime()];
                 const startSnap = new Date(Math.floor(startMs / SEVEN_DAYS_IN_MS) * SEVEN_DAYS_IN_MS); // first day of first week
-                const endSnap = new Date(Math.ceil(endMs / SEVEN_DAYS_IN_MS) * SEVEN_DAYS_IN_MS);
+                const endSnap = new Date(Math.floor(endMs / SEVEN_DAYS_IN_MS) * SEVEN_DAYS_IN_MS); // first day of final week (floor, not ceil, else we'd add a spurious extra week)
                 endSnap.setUTCDate(endSnap.getUTCDate() + 6); // final day of final week
                 bounds = { start: dateToNum(startSnap), end: dateToNum(endSnap) };
-                barCount = dayInterval(bounds) / 7;
+                barCount = dayInterval(bounds) / 7; // an integer, since both ends are snapped to the week grid
                 const bar = (date) => (dayInterval({ start: bounds.start, end: date }) - 1) / 7;
                 bi = {
                     granularity,
-                    bounds: { ...this.bounds },
+                    bounds: { ...bounds }, // the snapped bounds, per the HistogramBarInfo.bounds invariant: this.bounds would drop the first bar, whose key precedes this.bounds.start
                     bar,
                     left: (date) => bar(date) / barCount * chartWidth,
                     width: chartWidth / barCount,
