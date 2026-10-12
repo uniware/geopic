@@ -50,7 +50,7 @@ function cacheFilename(path) {
  * Treating an invalid body as "no usable cache" rather than trusting it means the affected folder
  * just gets fully reprocessed, same as if its cache file had never existed.
  */
-function isValidCachedGeoData(body) {
+export function isValidCachedGeoData(body) {
     return body !== null && typeof body === 'object' && Array.isArray(body.geoItems) && typeof body.immediateChildCount === 'number';
 }
 /**

@@ -865,7 +865,11 @@ export class Histogram {
             if (!date)
                 continue;
             label.textContent = fmt(date, i === (dates[1] ? 1 : 0));
-            label.style.left = `${bi.left(date)}px`;
+            // Centered on its bar (CSS translateX(-50%) on .histogram-label), but clamped so the whole label stays
+            // within the chart: filterBounds keeps bar centers within 5%-95% of the width, which isn't enough margin
+            // for a label as wide as "31 May 2015". Measured after setting text and display:block, so offsetWidth is real.
+            const [half, chartWidth] = [label.offsetWidth / 2, bi.count * bi.width];
+            label.style.left = `${Math.min(Math.max(bi.left(date) + bi.width / 2, half), chartWidth - half)}px`;
         }
     }
     recomputeDOM_selectionOverlay() {

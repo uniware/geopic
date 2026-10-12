@@ -343,6 +343,8 @@
 
         .histogram-label {
             position: absolute;
+            transform: translateX(-50%); /* style.left is the label's center; see recomputeDOM_chart_timeLabels */
+            white-space: nowrap;
         }
 
         .histogram-hover-indicator {

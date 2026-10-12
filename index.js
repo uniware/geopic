@@ -14,7 +14,7 @@
  */
 // Google Maps type imports
 /// <reference types="google.maps" />
-import { indexImpl, asClusters, boundsForDateRange, numToDate } from './geoitem.js';
+import { indexImpl, asClusters, boundsForDateRange, numToDate, isValidCachedGeoData } from './geoitem.js';
 import { authFetch, dbGet, dbPut, escapeHtml, exchangeCodeForToken, FetchError, indefinitelyRetryOn429, myFetch, noRetryOn429 } from './utils.js';
 import { Histogram } from './histogram.js';
 import { ImgPool, MarkerPool } from './pools.js';
@@ -109,14 +109,17 @@ export async function onBodyLoad() {
     }
     else if (!accessToken && !g_geoData) {
         const r = await myFetch('https://ljw1004.github.io/geopic/sample.json', noRetryOn429);
-        if (r.ok) {
-            g_geoData = await r.json();
+        // A malformed or truncated body would otherwise make r.json() throw and abort onBodyLoad part-way, or
+        // install something that isn't GeoData as g_geoData. Either way we just log and carry on with no data.
+        const sample = r.ok ? await r.json().catch(() => undefined) : undefined;
+        if (isValidCachedGeoData(sample)) {
+            g_geoData = sample;
             dbPut(g_geoData);
             instruct(status);
             showCurrentGeodata();
         }
         else {
-            console.error(await r.text());
+            console.error(`Couldn't load sample data: HTTP ${r.status}${r.ok ? ', but body is not valid GeoData' : ` - ${await r.text()}`}`);
         }
     }
 }
