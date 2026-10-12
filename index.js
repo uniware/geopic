@@ -14,7 +14,7 @@
  */
 // Google Maps type imports
 /// <reference types="google.maps" />
-import { indexImpl, asClusters, boundsForDateRange, numToDate, isValidCachedGeoData } from './geoitem.js';
+import { indexImpl, asClusters, boundsForDateRange, numToDate, isValidCachedGeoData, cleanupOldCacheFiles } from './geoitem.js';
 import { authFetch, dbGet, dbPut, escapeHtml, exchangeCodeForToken, FetchError, indefinitelyRetryOn429, myFetch, noRetryOn429 } from './utils.js';
 import { Histogram } from './histogram.js';
 import { ImgPool, MarkerPool } from './pools.js';
@@ -537,6 +537,9 @@ export async function onIndexClick() {
         await dbPut(g_geoData);
         showCurrentGeodata();
         instruct('fresh');
+        // Only after a successful index (cleanupOldCacheFiles assumes every folder now has its new-scheme cache).
+        // Not awaited, and its failures are only logged: the index is already saved, so cleanup is best-effort.
+        cleanupOldCacheFiles(photosDriveItem).catch(e => console.error(`cleanupOldCacheFiles: ${e}`));
     }
     catch (e) {
         instruct(undefined);

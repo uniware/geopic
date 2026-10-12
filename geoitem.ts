@@ -184,6 +184,80 @@ function cacheFilename(path: string[]): string {
 }
 
 /**
+ * Inverse of cacheFilename: the folder path whose cache file has this name, or undefined if no path does
+ * (e.g. a segment with a bare '~' like 'a~b', which cacheFilename never produces). Pure; no side effects.
+ * GUARANTEE: for every path p, cachePathFromFilename(cacheFilename(p)) equals p.
+ */
+function cachePathFromFilename(name: string): string[] | undefined {
+    if (!name.endsWith('.json')) return undefined;
+    const stem = name.slice(0, -'.json'.length);
+    if (stem === '_') return [];
+    const segments = stem.split('_');
+    // Each escaped segment is non-empty and made only of non-'~' chars, '~~' and '~u' (see cacheFilename's proof).
+    return segments.every(s => /^(?:[^~]|~~|~u)+$/.test(s))
+        ? segments.map(s => s.replace(/~(.)/g, (_, c) => c === 'u' ? '_' : '~'))
+        : undefined;
+}
+
+/**
+ * One-time removal of the cache files left in approot by the naming scheme used before cacheFilename escaped
+ * '_' and '~' (when root was 'index.json' and other paths were just joined with '_'). Those files are never read
+ * again, and the root one alone is as big as the whole index. Best-effort: never touches the index itself.
+ * Side effects: Graph requests, and DELETEs of approot files (which go to the user's OneDrive recycle bin).
+ *
+ * Which files: every approot *.json except '_.json' is decoded with cachePathFromFilename. A name that decodes to
+ * no path can only be an old-scheme file. A name that does decode is ambiguous (old 'a_b.json' for folder "a_b"
+ * reads as new-scheme folder "a/b"), so we ask Graph whether that folder exists under Pictures, and delete only
+ * on a definite 404. So we never delete the cache of an existing folder.
+ *
+ * One-time: runs only while 'index.json' exists, and deletes it last, only once every other check and delete
+ * was conclusive; anything inconclusive (throttling, server errors) leaves it in place to retry next time.
+ * Exception: if Pictures really has a top-level folder named "index", 'index.json' is its live cache and stays,
+ * so this re-checks on every index (one listing plus lookups: harmless, just redundant).
+ *
+ * Safety: if no lookup at all confirms an existing folder, we abort without deleting, since that would mean the
+ * lookup itself is broken. Wrongly deleting every cache would cost each user a full reindex.
+ * Assumes it runs after a successful indexImpl, so every current folder already has its new-scheme cache file.
+ */
+export async function cleanupOldCacheFiles(photosDriveItem: any): Promise<void> {
+    const files: { name: string, id: string }[] = [];
+    for (let url: string | undefined = 'https://graph.microsoft.com/v1.0/me/drive/special/approot/children?$top=999&select=name,id'; url;) {
+        const r = await authFetch(url, indefinitelyRetryOn429);
+        if (!r.ok) throw new FetchError(`${url}[cleanup.list]`, r, await r.text());
+        const page = await r.json();
+        files.push(...page.value);
+        url = page['@odata.nextLink'];
+    }
+    if (!files.some(f => f.name === 'index.json')) return; // already done (or never needed)
+
+    // Sends requests in $batch chunks of 20 (Graph's limit), and returns each request's HTTP status, in order.
+    async function batchStatuses(requests: { method: string, url: string }[]): Promise<number[]> {
+        const statuses: number[] = [];
+        for (let start = 0; start < requests.length; start += 20) {
+            const chunk = requests.slice(start, start + 20).map((req, i) => ({ id: String(i), ...req }));
+            const url = 'https://graph.microsoft.com/v1.0/$batch';
+            const r = await authFetch(url, indefinitelyRetryOn429, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requests: chunk }) });
+            if (!r.ok) throw new FetchError(`${url}[cleanup.batch]`, r, await r.text());
+            const byId = new Map<string, number>((await r.json()).responses.map((resp: any) => [resp.id, resp.status]));
+            statuses.push(...chunk.map(req => byId.get(req.id) ?? 0)); // 0 (missing) counts as inconclusive below
+        }
+        return statuses;
+    }
+
+    const candidates = files.filter(f => f.name.endsWith('.json') && f.name !== '_.json').map(f => ({ ...f, path: cachePathFromFilename(f.name) }));
+    const ambiguous = candidates.filter(c => c.path !== undefined);
+    const lookups = await batchStatuses(ambiguous.map(c => ({ method: 'GET', url: `/me/drive/items/${photosDriveItem.id}:/${c.path!.map(encodeURIComponent).join('/')}?select=id` })));
+    if (!lookups.includes(200)) { console.warn('cleanupOldCacheFiles: no folder lookup succeeded; aborting without deleting anything'); return; }
+
+    const doomed = [...candidates.filter(c => c.path === undefined), ...ambiguous.filter((_, i) => lookups[i] === 404)];
+    const [rest, marker] = [doomed.filter(f => f.name !== 'index.json'), doomed.filter(f => f.name === 'index.json')];
+    const deletes = await batchStatuses(rest.map(f => ({ method: 'DELETE', url: `/me/drive/items/${f.id}` })));
+    const conclusive = lookups.every(s => s === 200 || s === 404) && deletes.every(s => s === 204 || s === 404);
+    const markerDeletes = conclusive ? await batchStatuses(marker.map(f => ({ method: 'DELETE', url: `/me/drive/items/${f.id}` }))) : [];
+    console.log(`cleanupOldCacheFiles: deleted ${deletes.filter(s => s === 204).length + markerDeletes.filter(s => s === 204).length} of ${doomed.length} old cache files${conclusive ? '' : '; some inconclusive, will retry next index'}`);
+}
+
+/**
  * True if `body` looks like a usable GeoData object - specifically that geoItems is actually an
  * array, since that's the field the cache-reuse logic below indexes into. A cache file's body can
  * fail to look like this despite its HTTP status being 200: e.g. a large download (tens of MB for
