@@ -66,7 +66,7 @@ function expandToMinimum(range: InclusiveDateRange): InclusiveDateRange {
  * 
  * Construction
  * - constructor(container: HTMLElement)
- *   This sets up the histogram component, creating subsidiary elements as needed, and reads state from localStorage.
+ *   This sets up the histogram component, creating subsidiary elements as needed.
  *   It will use the container's offsetWidth and offsetHeight.
  *   All other options will be hard-coded; it will use hard-coded CSS identifiers and styles.
  *   It doesn't yet display any data!
@@ -75,25 +75,29 @@ function expandToMinimum(range: InclusiveDateRange): InclusiveDateRange {
  * - selection: {start: Numdate, end: Numdate} | undefined  // the date-range the user has selected
  * - bounds: {start: Numdate, end: Numdate}   // the date-range currently visible
  * - fullRange: {start: Numdate, end: Numdate}  // the full date-range of the data
- * - All three are private. They're persisted to localStorage, and read by the component upon construction.
+ * - All three are private, and live only in memory: nothing is saved or restored across page loads.
  *   (The only way for callers to learn about the selection is on the onSelectionChange event).
+ * - INVARIANT: selection is only ever changed by user interaction (mouse/keyboard), never by setData(),
+ *   so that the user's work survives data updates such as photos streaming in during indexing.
+ *   Every change is reported through onSelectionChange.
  * - data: Tally | undefined
- *   This private state is set by setData(). It lives only in memory (not persisted to localStorage).
+ *   This private state is set by setData(). It lives only in memory.
  *   It's present so that as the user zooms the histogram, the DOM elements can be recomputed.
  * - currentDrag: ...
  *   This is a private state used to track the current drag operations. We needn't go into details here.
  * 
  * Public methods and events
- * - onSelectionChange(selection: {start:Numdate, end:Numdate} | undefined): void
- *   When user makes an selection by clicking and dragging on the histogram, this event is fired
- *   when the drag is released. When the user updates the selection by dragging an edge of an
- *   existing selection, this event is fired during the drag (and hence not on release).
+ * - onSelectionChange(selection: {start:Numdate, end:Numdate} | undefined, isFinal: boolean): void
+ *   Fired on every change to the selection. While the user is dragging (a new selection, or an edge
+ *   of an existing one) it fires with isFinal=false on every change of date, so callers can give live
+ *   feedback; when the drag is released it fires once more with isFinal=true. Keyboard changes and
+ *   click-to-deselect are single actions, so they fire just once with isFinal=true.
+ *   GUARANTEE: every interaction that changes the selection ends with exactly one isFinal=true call
+ *   (for drags, upon the document's mouseup).
+ *   It is never fired from within setData().
  * - setData(data: Tally): void
- *   If tally's range differs from fullRange then we might update 'bounds' and 'selection' (the precise
- *   logic is subtle and not worth documenting; it satisfies the goal of remembering the user's selection
- *   if possible even in the common case that new photos are added past the end date, but also updating bounds
- *   to reflect the new end date.)
- *   It updates the 'fullRange'. And if selection is undefined, it also updates 'bounds' appropriately.
+ *   It updates the 'fullRange'. And if selection is undefined, it also updates 'bounds' to encompass
+ *   the in-bounds data. It never touches 'selection' (see INVARIANT above).
  *   Updates the 'data' state. Recomputes all DOM elements as needed.
  *   If the tally contained no datapoints, then we set tally to 'undefined'.
  * 
@@ -137,7 +141,7 @@ function expandToMinimum(range: InclusiveDateRange): InclusiveDateRange {
  *   user wants to select just a single day.
  * - When the user clicks and drags on one a draggable part at the end of the selection, then every
  *   change of date updates 'selection', updates the selection rectangle and draggable areas, and causes
- *   an onSelectionChanged event to be fired. Note that if the user drags the left edge but drags it over
+ *   an onSelectionChange(_, isFinal=false) event to be fired; release fires isFinal=true. Note that if the user drags the left edge but drags it over
  *   to the right, then what used to be the end edge is now the start edge!
  *   The draggable edge always snaps to units of whole bars (be they days or months), not to precisely
  *   where the mouse pointer is. Note that the non-dragged edge retains its exact date, not snapped.
@@ -145,7 +149,7 @@ function expandToMinimum(range: InclusiveDateRange): InclusiveDateRange {
  *   the last day of the month; if it's the left edge then it's deemed to be the first day of the month.
  * - When the user clicks anywhere else and drags, then the at the start of this drag and upon every
  *   change of date we update 'selection', and update the selection rectangle and draggable areas,
- *   but we only fire onSelectionChanged when the drag is released. Note that the user might drag to
+ *   and fire onSelectionChange(_, isFinal=false); release fires isFinal=true. Note that the user might drag to
  *   the left or to the right of where they initially clicked; hence which one counts as selection.start
  *   and selection.end will depend on which way they've dragged.
  * - In both cases of drags, if the user drags past the edge of the histogram, then this causes a pan
@@ -214,11 +218,11 @@ export class Histogram {
     private hoverIndicator: HTMLElement;
     private hoverTooltip: HTMLElement;
 
-    public onSelectionChange: (selection: { start: number, end: number } | undefined) => void = () => { };
+    public onSelectionChange: (selection: { start: number, end: number } | undefined, isFinal: boolean) => void = () => { };
 
     /**
      * Constructor sets up the histogram component by finding existing DOM elements
-     * and setting up event handlers. Reads state from localStorage.
+     * and setting up event handlers. Starts with no data and no selection.
      */
     constructor(container: HTMLElement) {
         this.container = container;
@@ -259,35 +263,14 @@ export class Histogram {
         this.selection = undefined;
         this.fullRange = { start: 0, end: 0 };
         this.bi = undefined as unknown as HistogramBarInfo; // only defined if tally is defined
-        // Try to fetch from last time
-        const savedStateRaw = localStorage.getItem('histogram-state');
-        if (savedStateRaw) {
-            const savedState = JSON.parse(savedStateRaw);
-            this.bounds = savedState.bounds ?? { start: 20250101, end: 20251231 };
-            this.selection = savedState.selection ?? undefined;
-            this.fullRange = savedState.fullRange ?? { start: 0, end: 0 };
-        }
     }
 
     /**
-     * Saves current state to localStorage.
-     */
-    private saveState(): void {
-        const state = {
-            bounds: this.bounds,
-            selection: this.selection,
-            fullRange: this.fullRange,
-        };
-        localStorage.setItem('histogram-state', JSON.stringify(state));
-    }
-
-
-    /**
-     * Sets the data for the histogram, recomputs bounds, saves state, and updates the DOM.
+     * Sets the data for the histogram, recomputes fullRange (and bounds, if there's no selection), and updates the DOM.
+     * Upholds the selection INVARIANT: never modifies selection, and never fires onSelectionChange, so it is
+     * safe for onSelectionChange handlers to call setData (as index.ts does, via showCurrentGeodata) without re-entrancy.
      */
     setData(tally: Tally): void {
-        const prevSelection = this.tally ? this.selection : undefined;
-
         // If tally has no datapoints, set it to undefined and leave bounds and selection as they are
         if (!tally || tally.dateCounts.size === 0) {
             this.tally = undefined;
@@ -306,16 +289,10 @@ export class Histogram {
             }
             if (inBounds.end === 0) inBounds = { start: fullRange.start, end: fullRange.end }; // If no inBounds data, use full range
 
-            // Has a change in fullRange invalidated the selection?
-            if (fullRange.start !== this.fullRange.start || fullRange.end < this.fullRange.end) this.selection = undefined;
-            // Should we extend the bounds?
-            if (this.selection && fullRange.end > this.fullRange.end) this.bounds.end = fullRange.end;
-            // Should we entirely reset the bounds?
+            // Map-led mode (no selection): autosuggest bounds that encompass the in-bounds data.
+            // With a selection, bounds are the user's to control, so we leave them alone.
             if (!this.selection) this.bounds = expandToMinimum(inBounds);
-
             this.fullRange = fullRange;
-            this.saveState();
-            if (this.selection !== prevSelection) this.reportSelectionChanged();
         }
 
         this.recomputeDOM_chart();
@@ -346,7 +323,6 @@ export class Histogram {
 
         // Update
         this.bounds = constrainedBounds;
-        this.saveState();
         this.recomputeDOM_chart();
     }
 
@@ -470,7 +446,7 @@ export class Histogram {
             // since selection.end is inclusive (see Filter.dateRange). In days view findLast is the identity.
             const [lo, hi] = [Math.min(this.currentDrag.startDate, date), Math.max(this.currentDrag.startDate, date)];
             this.selection = { start: lo, end: findLast(this.bi.bar(hi)) };
-            this.reportSelectionChanged();
+            this.reportSelectionChanged(false);
             this.recomputeDOM_selectionOverlay(); // recompute selection, but not bars/labels
             this.selectionTooltipLeft.style.display = event.clientX < this.currentDrag.startX ? 'block' : 'none';
             this.selectionTooltipRight.style.display = event.clientX > this.currentDrag.startX ? 'block' : 'none';
@@ -487,8 +463,7 @@ export class Histogram {
                 this.selection = { start: this.bi.find(bar), end: findLast(bar) };
             }
 
-            // Fire immediate event for edge dragging (per spec)
-            this.reportSelectionChanged();
+            this.reportSelectionChanged(false); // intermediate; the final report comes from handleGlobalMouseUp
             this.recomputeDOM_selectionOverlay();
             this.selectionTooltipLeft.style.display = bar < fixedBar ? 'block' : 'none';
             this.selectionTooltipRight.style.display = bar >= fixedBar ? 'block' : 'none';
@@ -502,7 +477,6 @@ export class Histogram {
                 this.container.style.cursor = 'grab';
             }
             this.hideHoverIndicators('all');
-            this.saveState();
         } else if (this.currentDrag?.type === 'new-selection') {
             const moveDistance = Math.max(Math.abs(event.clientX - this.currentDrag.startX), Math.abs(event.clientY - this.currentDrag.startY));
             this.currentDrag.hasBlown5Pixels ||= moveDistance >= 5;
@@ -510,15 +484,13 @@ export class Histogram {
             if (!this.currentDrag.hasBlown5Pixels && this.selection) { // Click to deselect
                 this.selection = undefined;
             }
-            this.reportSelectionChanged();
+            this.reportSelectionChanged(true);
 
             this.currentDrag = undefined;
-            this.saveState();
             this.recomputeDOM_selectionOverlay(); // recompute selection, but not bars/labels
         } else if (this.currentDrag?.type === 'edge-selection') {
-            this.reportSelectionChanged();
+            this.reportSelectionChanged(true);
             this.currentDrag = undefined;
-            this.saveState();
             this.hideHoverIndicators('selection'); // Hide tooltips
         }
     }
@@ -542,11 +514,12 @@ export class Histogram {
     }
 
     /**
-     * Reports that the selection has changed via onSelectionChange event.
-     * If alsoToScreenReader is true, it also tells the screen reader.
+     * Reports that the selection has changed via onSelectionChange event, and also tells the screen reader.
+     * isFinal is false for intermediate updates during a drag, and true when the interaction has finished:
+     * callers MUST pass true exactly once at the end of each interaction (see the onSelectionChange GUARANTEE).
      */
-    private reportSelectionChanged(): void {
-        this.onSelectionChange(this.selection);
+    private reportSelectionChanged(isFinal: boolean): void {
+        this.onSelectionChange(this.selection, isFinal);
 
         if (!this.selection) {
             this.srAnnouncements.textContent = 'All dates';
@@ -581,7 +554,6 @@ export class Histogram {
             startDate.setUTCDate(startDate.getUTCDate() + deltaDays);
             endDate.setUTCDate(endDate.getUTCDate() + deltaDays);
             this.bounds = { start: dateToNum(startDate), end: dateToNum(endDate) };
-            this.saveState();
             this.recomputeDOM_chart();
         } else if (!event.shiftKey && (ZOOM_IN_CODES.includes(event.code) || ZOOM_OUT_CODES.includes(event.code))) {
             // ZOOM IN/OUT
@@ -597,7 +569,6 @@ export class Histogram {
                 end: Math.min(this.fullRange.end, attemptedBounds.end)
             });
             this.bounds = newBounds;
-            this.saveState();
             this.recomputeDOM_chart();
         } else if (event.shiftKey && !this.selection && (event.code === 'ArrowLeft' || event.code === 'ArrowRight' || ZOOM_IN_CODES.includes(event.code) || ZOOM_OUT_CODES.includes(event.code))) {
             // CREATE SELECTION
@@ -609,8 +580,7 @@ export class Histogram {
             const end = new Date(start);
             end.setUTCDate(end.getUTCDate() + daysWidth - 1); // -1 because range is inclusive            
             this.selection = { start: dateToNum(start), end: dateToNum(end) };
-            this.reportSelectionChanged();
-            this.saveState();
+            this.reportSelectionChanged(true);
             this.recomputeDOM_chart();
         } else if (event.shiftKey && (event.code === 'ArrowLeft' || event.code === 'ArrowRight')) {
             // MOVE SELECTION LEFT/RIGHT
@@ -627,8 +597,7 @@ export class Histogram {
             newStartDate.setUTCDate(newStartDate.getUTCDate() + deltaDays);
             newEndDate.setUTCDate(newEndDate.getUTCDate() + deltaDays);
             this.selection = { start: dateToNum(newStartDate), end: dateToNum(newEndDate) };
-            this.reportSelectionChanged();
-            this.saveState();
+            this.reportSelectionChanged(true);
             this.recomputeDOM_chart();
         } else if (event.shiftKey && (ZOOM_IN_CODES.includes(event.code) || ZOOM_OUT_CODES.includes(event.code))) {
             // ENLARGE/SHRINK SELECTION
@@ -646,15 +615,13 @@ export class Histogram {
                 start: Math.max(this.fullRange.start, attemptedBounds.start),
                 end: Math.min(this.fullRange.end, attemptedBounds.end)
             });
-            this.reportSelectionChanged();
-            this.saveState();
+            this.reportSelectionChanged(true);
             this.recomputeDOM_chart();
         } else if (event.code === 'Escape') {
             event.preventDefault();
             if (!this.selection) return;
             this.selection = undefined;
-            this.reportSelectionChanged();
-            this.saveState();
+            this.reportSelectionChanged(true);
             this.recomputeDOM_chart();
         }
     }
@@ -673,7 +640,6 @@ export class Histogram {
             // End any current drag operation when page loses focus
             if (this.currentDrag?.type === 'pan') {
                 this.currentDrag = undefined;
-                this.saveState();
             }
         }
     }

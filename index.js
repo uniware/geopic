@@ -191,18 +191,30 @@ export async function onBodyLoad() {
  *   - User Intent: The user needs to isolate a single location and then pinpoint two distinct moments in time associated with it.
  */
 async function installHandlers() {
+    // INVARIANT: userHasMapWork is true iff the user's most recent pan/zoom of the map happened while a histogram
+    // selection existed, i.e. the user has done map work in filtering mode, which autosuggest must not override.
     let userHasMapWork = false;
+    // INVARIANT: boundsChangedByCode is true from when we call fitBounds for an autosuggestion until whichever comes
+    // first: the map next goes idle, or the user next starts interacting with the map. While true, bounds changes are
+    // attributed to our code, not to the user. The second exit matters because 'idle' isn't guaranteed to follow a
+    // fitBounds that leaves the bounds unchanged, and because the user may grab the map mid-animation; without it,
+    // the flag could stay stuck and swallow the user's real map work.
     let boundsChangedByCode = false;
     MAP.addListener('bounds_changed', () => {
         if (!g_geoData)
             return;
         if (!boundsChangedByCode)
-            userHasMapWork = Boolean(g_filter.dateRange);
+            userHasMapWork = Boolean(g_filter.dateRange); // upholds the userHasMapWork invariant
         showCurrentGeodata();
     });
     MAP.addListener('idle', () => boundsChangedByCode = false);
+    // Capture phase on the <gmp-map> host, so we see these before the map (or a marker) handles them, even though
+    // they originate inside its shadow DOM. Covers drag, click-to-zoom on markers, scroll-zoom, zoom buttons, keyboard.
+    for (const type of ['pointerdown', 'wheel', 'keydown']) {
+        document.getElementById('map').addEventListener(type, () => boundsChangedByCode = false, { capture: true });
+    }
     const DATE_RANGE_LABEL = document.getElementById('date-range-label');
-    HISTOGRAM.onSelectionChange = (selection) => {
+    HISTOGRAM.onSelectionChange = (selection, isFinal) => {
         if (!g_geoData)
             return;
         g_filter.dateRange = selection;
@@ -213,13 +225,14 @@ async function installHandlers() {
             const [start, end] = [numToDate(selection.start).toLocaleDateString(undefined, { timeZone: 'UTC' }), numToDate(selection.end).toLocaleDateString(undefined, { timeZone: 'UTC' })];
             DATE_RANGE_LABEL.textContent = start === end ? start : `${start} – ${end}`;
         }
-        if (g_filter.dateRange && !userHasMapWork) {
-            const newBounds = boundsForDateRange(g_geoData, g_filter.dateRange);
-            if (newBounds) {
-                boundsChangedByCode = true;
-                MAP.fitBounds(new google.maps.LatLngBounds(newBounds.sw, newBounds.ne));
-                return;
-            }
+        // Filtering-mode autosuggest: fit the map to the selection, unless the user has map work to preserve.
+        // Only once the user has finished adjusting the selection (isFinal), else the map would jump on every
+        // mouse-move of a drag. We always showCurrentGeodata() ourselves rather than relying on fitBounds to
+        // trigger 'bounds_changed', since a fitBounds that leaves the bounds unchanged triggers nothing.
+        const newBounds = isFinal && g_filter.dateRange && !userHasMapWork ? boundsForDateRange(g_geoData, g_filter.dateRange) : undefined;
+        if (newBounds) {
+            boundsChangedByCode = true; // establishes the boundsChangedByCode invariant: this move is ours, not the user's
+            MAP.fitBounds(new google.maps.LatLngBounds(newBounds.sw, newBounds.ne));
         }
         showCurrentGeodata();
     };
@@ -268,6 +281,9 @@ async function installHandlers() {
         await place.fetchFields({ fields: ['location', 'viewport'] });
         sessionToken = undefined; // the billing session concludes once fetchFields is called
         hidePlaceSuggestions();
+        // Navigating to a place is the user's own map work: the input came from the text box, not the map, so
+        // we end boundsChangedByCode ourselves (per its invariant) in case an autosuggest move is still in flight.
+        boundsChangedByCode = false;
         if (place.location) {
             MAP.setCenter(place.location);
             if (place.viewport)
