@@ -286,7 +286,7 @@ function createStartWorkItem(driveItem: any, path: string[]): WorkItem {
             {
                 id: `cache-${driveItem.id}`,
                 method: 'GET',
-                url: `/me/drive/special/approot:/${cacheFilename(path)}:/content`
+                url: `/me/drive/special/approot:/${encodeURIComponent(cacheFilename(path))}:/content` // encoded: folder names may contain '#', '%', '?'
             }
         ],
         responses: {},
@@ -318,7 +318,7 @@ function createEndWorkItem(item: WorkItem): WorkItem {
             {
                 id: `write-${item.data.id}`,
                 method: 'PUT',
-                url: `/me/drive/special/approot:/${cacheFilename(item.path)}:/content`,
+                url: `/me/drive/special/approot:/${encodeURIComponent(cacheFilename(item.path))}:/content`, // encoded, as for the cache GET
                 // I experimentally found weird bugs and workarounds in the batch API (not the individual API):
                 // - If I upload an object with content-type application/json, OneDrive claims success but stores a file of size 0
                 // - If I upload a string, or base64-encoded json string, with application/json, OneDrive fails with "Invalid json body"

@@ -282,7 +282,8 @@ export async function multipartUpload(log: (count: number, total: number) => voi
     const CHUNK_SIZE = 10 * 1024 * 1024; // 10 MiB chunks (must be multiple of 320 KiB, which this is)
     const bytes = new TextEncoder().encode(data);
 
-    const url = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${name}:/createUploadSession`
+    // name is a raw filename, which may contain URL-significant characters like '#', '%' or '?', so it must be encoded.
+    const url = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${encodeURIComponent(name)}:/createUploadSession`
     const r = await authFetch(url, indefinitelyRetryOn429, {
         method: 'POST',
         headers: {

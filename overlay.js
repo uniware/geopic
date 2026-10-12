@@ -303,7 +303,7 @@ export class Overlay {
             const tagList = (driveItem.tags ?? []).map((t) => t.name).map(escapeHtml);
             const tags = tagList.length > 0 ? `<br/>[${tagList.join(', ')}]` : '';
             const date = new Date(driveItem.photo.takenDateTime).toLocaleDateString();
-            const descriptionHtml = `${date} &bull; ${driveItem.name}${tags}<br/><a href="${driveItem.webUrl}" target="geopic-image">Click to open full image in OneDrive</a>`;
+            const descriptionHtml = `${date} &bull; ${escapeHtml(driveItem.name)}${tags}<br/><a href="${driveItem.webUrl}" target="geopic-image">Click to open full image in OneDrive</a>`;
             media.element = document.createElement('img');
             media.element.className = 'overlay-media';
             media.element.onload = () => onLoad(descriptionHtml);

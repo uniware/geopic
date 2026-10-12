@@ -116,7 +116,7 @@ export async function onBodyLoad(): Promise<void> {
     if (accessToken && state === 'index') {
         onIndexClick();
     } else if (!accessToken && !g_geoData) {
-        const r = await myFetch('https://ljw1004.github.io/geopic/sample.json', noRetryOn429);
+        const r = await myFetch('./sample.json', noRetryOn429); // served alongside index.html by our own deployment
         // A malformed or truncated body would otherwise make r.json() throw and abort onBodyLoad part-way, or
         // install something that isn't GeoData as g_geoData. Either way we just log and carry on with no data.
         const sample = r.ok ? await r.json().catch(() => undefined) : undefined;
@@ -371,9 +371,13 @@ async function installHandlers(): Promise<void> {
 
     TEXT_FILTER.placeholder = 'Filter, e.g. Paris, Person, 2024, .mov';
 
-    MAP.addListener('rightclick', () => {
-        const currentZoom = MAP.getZoom() ?? 1;
-        MAP.setZoom(Math.max(1, currentZoom - 3));
+    // Right-click zooms out. We listen for 'contextmenu' on the <gmp-map> host rather than the map's own 'rightclick'
+    // event, because the latter doesn't fire when the right-click lands on a marker, which covers much of the map.
+    // preventDefault suppresses the browser's context menu. It counts as user map work: its pointerdown already
+    // ended boundsChangedByCode (see the capture listeners above), so the resulting bounds_changed is the user's.
+    document.getElementById('map')!.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        MAP.setZoom(Math.max(1, (MAP.getZoom() ?? 1) - 3));
     });
 }
 
