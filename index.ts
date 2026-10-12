@@ -123,7 +123,7 @@ export async function onBodyLoad(): Promise<void> {
             instruct(status);
             showCurrentGeodata();
         } else {
-            console.error(r.text());
+            console.error(await r.text());
         }
     }
 }
@@ -437,7 +437,7 @@ export async function onLogoutClick(): Promise<void> {
     await dbPut(null);
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
-    location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=${location.href}`;
+    location.href = `https://login.microsoftonline.com/common/oauth2/v2.0/logout?post_logout_redirect_uri=${encodeURIComponent(location.href)}`;
 }
 
 /**
@@ -487,7 +487,7 @@ function showCurrentGeodata(): void {
     const thumbnails = clusters.flatMap(cluster => cluster.somePassFilterItems.slice(0, Math.ceil(cluster.somePassFilterItems.length * fraction))).sort((a, b) => a.date - b.date);
     for (const item of thumbnails) {
         const img = IMG_POOL.add(item.id, item.thumbnailUrl);
-        img.title = `${numToDate(item.date).toLocaleDateString(undefined, { timeZone: 'UTC' })} -${escapeHtml(item.name)}`;
+        img.title = `${numToDate(item.date).toLocaleDateString(undefined, { timeZone: 'UTC' })} - ${item.name}`; // title is plain text, not HTML, so no escaping
         img.setAttribute('data-id', item.id);
         img.onclick = () => showItem(item);
     }

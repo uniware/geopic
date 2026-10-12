@@ -613,21 +613,6 @@ export class Histogram {
         }
     }
     /**
-     * Returns a bar from the pool, or creates a new one if none are available.
-     * The caller is responsible for setting style, display:block, content etc.
-     */
-    getBarFromPool() {
-        const existing = this.chartArea.querySelector('.histogram-bar[style*="display: none"]');
-        if (existing) {
-            return existing;
-        }
-        else {
-            const bar = this.barTemplate.cloneNode(true);
-            this.chartArea.appendChild(bar);
-            return bar;
-        }
-    }
-    /**
      * Updates chart DOM elements to match the current state (bars, labels),
      * and also the selection overlay if present.
      * Stores derived information in this.bi
@@ -651,6 +636,8 @@ export class Histogram {
      * To note: this.bounds represents a notional exact range of the histogram, but
      * bi.bounds represents the ranges of the bars which in weeks/months view may be slightly larger
      * than this.bounds (because they're enlarged to the nearest bar boundaries).
+     * Assumes (as recomputeDOM_chart establishes before calling) that every .histogram-bar is hidden,
+     * so the whole set is free for reuse; any it doesn't reuse stay hidden.
      */
     recomputeDOM_chart_bars(dateCounts) {
         const [chartWidth, chartHeight] = [this.chartArea.offsetWidth, this.chartArea.offsetHeight];
@@ -750,6 +737,10 @@ export class Histogram {
             maxInBoundsCount = Math.max(counts.inBounds.inFilter + counts.inBounds.outFilter, maxInBoundsCount);
         }
         // Render the bar. Blue/yellow/grey are disjoint.
+        // Bar elements are pooled: all are hidden (per the assumption above), so we hand them out in DOM order,
+        // and clone more from the template only once they run out. Linear, rather than searching per bar.
+        const pool = Array.from(this.chartArea.querySelectorAll('.histogram-bar'));
+        let poolUsed = 0;
         for (const [date, counts] of barCounts) {
             if (date < bi.bounds.start || date > bi.bounds.end)
                 continue;
@@ -762,7 +753,7 @@ export class Histogram {
             for (const colorClass of ['in-bounds', 'filter-glow', 'grey']) {
                 if (colorCounts[colorClass] === 0)
                     continue;
-                const bar = this.getBarFromPool();
+                const bar = poolUsed < pool.length ? pool[poolUsed++] : this.chartArea.appendChild(this.barTemplate.cloneNode(true));
                 const height = (colorCounts[colorClass] / maxInBoundsCount) * chartHeight;
                 bar.className = colorClass === 'grey' ? 'histogram-bar' : `histogram-bar ${colorClass}`;
                 bar.style.left = `${bi.left(date)}px`;

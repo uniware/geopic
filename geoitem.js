@@ -236,7 +236,11 @@ export async function indexImpl(progressCallback, photosDriveItem) {
             // ========================================
             const cacheResult = item.responses[`cache-${item.data.id}`];
             const childrenResult = item.responses[`children-${item.data.id}`];
-            if (childrenResult.status === 429 || childrenResult.status === 503 || childrenResult.status === 504) {
+            // A throttled cache request must also requeue (not just a throttled children request): otherwise we'd
+            // treat it as "no cache", losing the thumbnailReuseMap and re-fetching every thumbnail in the folder.
+            // The requeued copy keeps item.requests, so it re-asks for exactly what this attempt asked for.
+            const isThrottled = (r) => r !== undefined && (r.status === 429 || r.status === 503 || r.status === 504);
+            if (isThrottled(childrenResult) || isThrottled(cacheResult)) {
                 toFetch.unshift({ ...item, responses: {} });
                 const secondsSinceSuccess = Math.round((performance.now() - lastSuccessfulFetch) / 1000);
                 log(item)(`throttled for ${secondsSinceSuccess}s`);
@@ -244,8 +248,12 @@ export async function indexImpl(progressCallback, photosDriveItem) {
                 continue;
             }
             lastSuccessfulFetch = performance.now();
-            if (childrenResult.body.error) {
-                throw new FetchError(`${childrenResult.request.url}[child]`, new Response(childrenResult.body, { status: childrenResult.status }), JSON.stringify(childrenResult.body));
+            // Below, we rely on the body being a children listing (an object with a 'value' array). Anything else -
+            // an error object, or a non-JSON string left by postprocessBatchResponse - is reported as an error here
+            // rather than crashing later with an opaque TypeError.
+            const body = childrenResult.body;
+            if (body === null || typeof body !== 'object' || body.error || !Array.isArray(body.value)) {
+                throw new FetchError(`${childrenResult.request.url}[child]`, new Response(null, { status: childrenResult.status }), typeof body === 'string' ? body : JSON.stringify(body));
             }
             // cacheResult is only present on page 1 (a continuation page's requests contain only the
             // next children-link, not a repeat cache request) - so the wholesale-reuse shortcut and the
@@ -328,16 +336,10 @@ export async function indexImpl(progressCallback, photosDriveItem) {
             // We'll have to adjust all our folder indexes. Invariant: a child's folders[] are
             // are all different from those of its parent (hence no need to dedupe).
             const parentName = cacheFilename(item.path.slice(0, -1));
-            const parent = waiting.get(parentName);
-            try {
-                const adjustedItems = item.data.geoItems.map(gi => ({ ...gi, folderIndex: gi.folderIndex + parent.data.folders.length }));
-                parent.data.geoItems = parent.data.geoItems.concat(adjustedItems);
-                parent.data.folders = parent.data.folders.concat(item.data.folders);
-            }
-            catch (e) {
-                console.error(String(e));
-                debugger;
-            }
+            const parent = waiting.get(parentName); // present, since cacheFilename is injective (see its INVARIANT)
+            const adjustedItems = item.data.geoItems.map(gi => ({ ...gi, folderIndex: gi.folderIndex + parent.data.folders.length }));
+            parent.data.geoItems = parent.data.geoItems.concat(adjustedItems);
+            parent.data.folders = parent.data.folders.concat(item.data.folders);
             parent.remainingSubfolders--;
             if (parent.remainingSubfolders === 0) {
                 await resolveThumbnails(log(parent), parent, async (data) => {
