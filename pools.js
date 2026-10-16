@@ -99,14 +99,15 @@ export class MarkerPool {
                     content.appendChild(badge);
                 }
                 const marker = new this.MARKER_LIBRARY.AdvancedMarkerElement({ map: this.MAP, content });
-                markerAndListener = { marker, listener: undefined };
+                markerAndListener = { marker, onClick: undefined };
                 // here we're establishing the invariants
             }
         }
-        // Now establish the invariant that marker has no listener that we installed
-        // Assuming invariant that Markers.listener is any listener that we installed.
-        const { marker, listener: oldListener } = markerAndListener;
-        oldListener?.remove();
+        // Now establish the invariant that marker has no click handler that we installed
+        // Assuming invariant that Markers.onClick is any handler that we installed.
+        const { marker, onClick: oldOnClick } = markerAndListener;
+        if (oldOnClick)
+            marker.removeEventListener('gmp-click', oldOnClick);
         // Now we'll set up its content, per our parameters
         let img;
         if (spanText === undefined) {
@@ -122,9 +123,12 @@ export class MarkerPool {
             img.src = src;
         if (img.className !== imgClassName)
             img.className = imgClassName;
-        const listener = onClick ? marker.addListener('gmp-click', onClick) : undefined;
+        // Unlike the deprecated addListener('gmp-click'), addEventListener doesn't make the marker clickable by itself.
+        marker.gmpClickable = onClick !== undefined;
+        if (onClick)
+            marker.addEventListener('gmp-click', onClick);
         // Final book-keeping. We've established all the invariants described in Markers type.
-        this.state.used[kind].set(id, { marker, listener });
+        this.state.used[kind].set(id, { marker, onClick });
         return marker;
     }
     /**
@@ -138,11 +142,12 @@ export class MarkerPool {
         // Any remaining markers in immediate-reuse pool are moved to unused-pool
         // We're modifying by reference the same 'unused' that we got by destructuring earlier.
         for (const kind of ['img', 'span']) {
-            for (const [id, { marker, listener }] of forImmediateReuse[kind]) {
+            for (const [id, { marker, onClick }] of forImmediateReuse[kind]) {
                 marker.map = null; // establish the invariant for unused, that map=null
-                listener?.remove(); // establish the invariant for unused, that listener is undefined
+                if (onClick)
+                    marker.removeEventListener('gmp-click', onClick); // establish the invariant for unused, that onClick is undefined
                 // other invariants (about content-type and key) carry over
-                unused[kind].set(id, { marker, listener: undefined });
+                unused[kind].set(id, { marker, onClick: undefined });
             }
         }
         this.state = { kind: 'finished', used: onMap, unused };

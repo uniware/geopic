@@ -19,7 +19,7 @@ GeoPic is a single-page web application that combines OneDrive photos with Googl
 - This is a minimal-dependency project.
 - Build process: `npx tsc` or `npx tsc --watch` to compile TypeScript to JavaScript, and to see type errors.
 - Test locally using localhost... (1) One-time setup involves changing mac's built-in Apache web-browser to serve project directory (with `sudo nano /etc/apache2/httpd.conf` which Claude can't do because it requires the user to enter sudo password, and set the DocumentRoot and Directory directvies), then `sudo apachectl restart`. (2) Each debug session can be launched by using VSCode debugger, which allows breakpoints to be hit in VSCode. Or just opening Chrome to http://localhost and use Chrome F2 debugging.
-- Test in production by using the "deploy" task to deploy to http://unto.me/geopic, then open a browser to https://unto.me/geopic
+- Test in production: merge `dev` into `main` and push. Vercel auto-deploys `main` to https://geopic.glopal.net/ (takes a few minutes). The older "deploy" task in `.vscode/tasks.json` rsyncs to https://unto.me/geopic instead; it excludes `config.js*` so the server's config survives `--delete`.
 
 
 ## Codebase style and guidelines
@@ -63,6 +63,5 @@ Coding style: All code must also be clean, documented and minimal. That means:
   - If Claude made changes where the new code has typecheck errors within itself, then Claude should address them immedaitely.
 
 ## TODO
-- Zoom out still isn't working
 - Verify app. Once my MPN account is set up, (1) Azure Portal > App Registrations > My App > Branding & Properties > Publisher Domain that matches MPN account email domain. (2) Branding & Properties > add a verified publisher > MPN ID > verify and save.
 - Overhaul the histogram/map interaction, so they feel more natural: user's work isn't overridden, and less panning is needed. Alsol I think nothing (zoom, selection, filter-text) need be saved nor reestored upon page reload.
