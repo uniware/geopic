@@ -60,6 +60,12 @@ let g_geoData: GeoData | undefined;
 // in response to user actions, by installHandlers. It gets read by showCurrentGeodata.
 let g_filter: Filter = { dateRange: undefined, text: undefined };
 
+// Shown in place of a thumbnail we couldn't fetch (see thumbnail() in showCurrentGeodata): a grey generic-picture icon.
+// Inline, so displaying it never needs a network request.
+const PLACEHOLDER_THUMBNAIL = 'data:image/svg+xml,' + encodeURIComponent(
+    `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' fill='#ddd'/>`
+    + `<circle cx='16' cy='8' r='2' fill='#999'/><path d='M4 18l5-7 4 5 2.5-3 4.5 5z' fill='#999'/></svg>`);
+
 /**
  * Sets up authentication and UI.
  * - If we have local cache of geoData, we set up map, thumbnails, histogram
@@ -465,6 +471,15 @@ function showCurrentGeodata(): void {
     const somePassFilterCount = clusters.reduce((sum, c) => sum + c.somePassFilterItems.length, 0);
     const totalPassFilterCount = clusters.reduce((sum, c) => sum + c.totalPassFilterItems, 0);
 
+    /**
+     * The image to display for an item: its thumbnail, or a placeholder if we don't have one. Relies on this
+     * invariant of indexImpl: a GeoItem reaches g_geoData only after resolveThumbnails has run on it, so its
+     * thumbnailUrl is a data: url unless that fetch failed (see GeoItem.thumbnailFailedAt). The https url left
+     * behind in that case is a short-lived link that has already failed, so it would only render as a broken
+     * image (and log a 401); clicking the placeholder still opens the full photo, which is fetched separately.
+     */
+    const thumbnail = (item: GeoItem): string => item.thumbnailUrl.startsWith('data:') ? item.thumbnailUrl : PLACEHOLDER_THUMBNAIL;
+
     function showItem(item: GeoItem): void {
         if (g_geoData?.id === 'sample-data') OVERLAY.showDataUrl(item.id, item.thumbnailUrl, `<h2>HIGH QUALITY ONLY FOR YOUR OWN ONEDRIVE PHOTOS</h2> ${escapeHtml(item.name)}`);
         else OVERLAY.showId(item.id);
@@ -482,7 +497,7 @@ function showCurrentGeodata(): void {
         const imgClassName = [...visualClass, ...pointerClass].join(' ');
         const spanText = cluster.totalPassFilterItems <= 1 ? undefined : cluster.totalPassFilterItems.toString();
         const onClick = () => clickWillZoom ? MAP.fitBounds(new google.maps.LatLngBounds(cluster.bounds.sw, cluster.bounds.ne)) : showItem(item);
-        const marker = MARKER_POOL.add(item.id, item.thumbnailUrl, imgClassName, spanText, onClick);
+        const marker = MARKER_POOL.add(item.id, thumbnail(item), imgClassName, spanText, onClick);
         marker.position = item.position;
         marker.zIndex = cluster.totalPassFilterItems;
     }
@@ -493,7 +508,7 @@ function showCurrentGeodata(): void {
     const fraction = somePassFilterCount > MAX_THUMBNAILS ? MAX_THUMBNAILS / somePassFilterCount : 1;
     const thumbnails = clusters.flatMap(cluster => cluster.somePassFilterItems.slice(0, Math.ceil(cluster.somePassFilterItems.length * fraction))).sort((a, b) => a.date - b.date);
     for (const item of thumbnails) {
-        const img = IMG_POOL.add(item.id, item.thumbnailUrl);
+        const img = IMG_POOL.add(item.id, thumbnail(item));
         img.title = `${numToDate(item.date).toLocaleDateString(undefined, { timeZone: 'UTC' })} - ${item.name}`; // title is plain text, not HTML, so no escaping
         img.setAttribute('data-id', item.id);
         img.onclick = () => showItem(item);
