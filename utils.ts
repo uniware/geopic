@@ -375,6 +375,14 @@ class AuthRefreshSignal {
 const AUTH_REFRESH_SIGNAL = new AuthRefreshSignal();
 
 /**
+ * OAuth scopes we request, both at login and on every token refresh.
+ * Least privilege: we only read the user's own drive (photos, their metadata and thumbnails) and only write
+ * inside our app folder (special/approot: the cache files, and deleting old ones by ids listed from approot).
+ * Any new write outside approot, or any read of items shared from other drives, would need a broader scope.
+ */
+export const GRAPH_SCOPES = 'files.read files.readwrite.appfolder offline_access';
+
+/**
  * This function is like fetch(), but it deals with OAuth2 code-flow authentication:
  * - It sends a header "Authorization: Bearer <access_token>" using the access_token in localStorage
  * - If this fails with 401 Unauthorized, it attempts to refresh the access token and try again.
@@ -416,7 +424,7 @@ export async function authFetch(url: string, retryOn429: () => boolean, options?
                 client_id: CLIENT_ID,
                 refresh_token: refreshToken,
                 grant_type: 'refresh_token',
-                scope: 'files.readwrite offline_access',
+                scope: GRAPH_SCOPES,
             }).toString()
         });
         if (!r.ok) {

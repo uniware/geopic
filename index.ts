@@ -17,7 +17,7 @@
 // Google Maps type imports
 /// <reference types="google.maps" />
 import { indexImpl, GeoData, asClusters, GeoItem, boundsForDateRange, Filter, numToDate, isValidCachedGeoData, cleanupOldCacheFiles } from './geoitem.js';
-import { authFetch, dbGet, dbPut, escapeHtml, exchangeCodeForToken, FetchError, indefinitelyRetryOn429, myFetch, noRetryOn429 } from './utils.js';
+import { authFetch, dbGet, dbPut, escapeHtml, exchangeCodeForToken, FetchError, GRAPH_SCOPES, indefinitelyRetryOn429, myFetch, noRetryOn429 } from './utils.js';
 import { Histogram } from './histogram.js';
 import { ImgPool, MarkerPool } from './pools.js';
 import { Overlay } from './overlay.js';
@@ -435,7 +435,7 @@ export async function onLoginClick(): Promise<void> {
         client_id: CLIENT_ID,
         response_type: 'code',
         redirect_uri: window.location.origin + window.location.pathname,
-        scope: 'files.readwrite offline_access',
+        scope: GRAPH_SCOPES,
         code_challenge,
         code_challenge_method: 'S256', // means that code_challenge is a SHA256 hash of the code_verifier value, base64url
         state: 'index'
