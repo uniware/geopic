@@ -125,14 +125,16 @@ export async function onBodyLoad(): Promise<void> {
         const r = await myFetch('./sample.json', noRetryOn429); // served alongside index.html by our own deployment
         // A malformed or truncated body would otherwise make r.json() throw and abort onBodyLoad part-way, or
         // install something that isn't GeoData as g_geoData. Either way we just log and carry on with no data.
-        const sample = r.ok ? await r.json().catch(() => undefined) : undefined;
+        // A failed read or parse resolves to its Error (which JSON can never produce), so the log can tell the two apart.
+        const sample: unknown = r.ok ? await r.json().catch((e: unknown) => e) : undefined;
         if (isValidCachedGeoData(sample)) {
             g_geoData = sample;
             dbPut(g_geoData);
             instruct(status);
             showCurrentGeodata();
         } else {
-            console.error(`Couldn't load sample data: HTTP ${r.status}${r.ok ? ', but body is not valid GeoData' : ` - ${await r.text()}`}`);
+            const why = !r.ok ? ` - ${await r.text()}` : sample instanceof Error ? `, but reading the body failed: ${sample}` : ', but body is not valid GeoData';
+            console.error(`Couldn't load sample data: HTTP ${r.status}${why}`);
         }
     }
 }

@@ -91,8 +91,8 @@ export class MarkerPool {
 
         // Step 1. Attempt to reuse from immediate-reuse pool with exact matching src
         const kind = spanText === undefined ? 'img' : 'span';
-        let markerAndListener = this.state.wasUsed[kind].get(id);
-        if (markerAndListener) {
+        let markerAndOnClick = this.state.wasUsed[kind].get(id);
+        if (markerAndOnClick) {
             this.state.wasUsed[kind].delete(id);
             // assuming invariant that forImmediateReuse has map=container
             // assuming invariant that forImmediateReuse[key] has correct content type
@@ -101,9 +101,9 @@ export class MarkerPool {
             const firstEntry = this.state.unused[kind].entries().next();
             if (!firstEntry.done) {
                 const oldId = firstEntry.value[0];
-                markerAndListener = firstEntry.value[1];
+                markerAndOnClick = firstEntry.value[1];
                 this.state.unused[kind].delete(oldId);
-                markerAndListener.marker.map = this.MAP; // because unused has map=null
+                markerAndOnClick.marker.map = this.MAP; // because unused has map=null
                 // assuming invariant that unused[key] has correct content type
             } else {
                 const img = document.createElement('img');
@@ -118,14 +118,14 @@ export class MarkerPool {
                     content.appendChild(badge);
                 }
                 const marker = new this.MARKER_LIBRARY.AdvancedMarkerElement({ map: this.MAP, content });
-                markerAndListener = { marker, onClick: undefined };
+                markerAndOnClick = { marker, onClick: undefined };
                 // here we're establishing the invariants
             }
         }
 
         // Now establish the invariant that marker has no click handler that we installed
         // Assuming invariant that Markers.onClick is any handler that we installed.
-        const { marker, onClick: oldOnClick } = markerAndListener;
+        const { marker, onClick: oldOnClick } = markerAndOnClick;
         if (oldOnClick) marker.removeEventListener('gmp-click', oldOnClick);
 
         // Now we'll set up its content, per our parameters
