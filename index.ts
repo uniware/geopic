@@ -436,6 +436,9 @@ export async function onLoginClick(): Promise<void> {
         response_type: 'code',
         redirect_uri: window.location.origin + window.location.pathname,
         scope: GRAPH_SCOPES,
+        // Always show Microsoft's account picker: otherwise it silently reuses whichever account last signed in at
+        // login.microsoftonline.com, e.g. a work account from the Azure Portal, whose OneDrive Graph calls then fail.
+        prompt: 'select_account',
         code_challenge,
         code_challenge_method: 'S256', // means that code_challenge is a SHA256 hash of the code_verifier value, base64url
         state: 'index'

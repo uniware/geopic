@@ -158,11 +158,13 @@ interface WorkItem {
     // for Graph to generate reliably - a folder with thousands of items in one big page was observed to
     // never successfully complete no matter how many times it was retried). childrenAccumulated holds
     // every page's DriveItems gathered so far for a START item still being listed; thumbnailReuseMap
-    // holds the id->thumbnailUrl lookup built from a stale-but-present cache file (see below), which
+    // holds the id->thumbnail-state lookup built from a stale-but-present cache file (see below), which
     // must persist across every page rather than being rebuilt, since it's only available on page 1.
+    // INVARIANT: each value is either { thumbnailUrl } with a data: url, or { thumbnailFailedAt } - never
+    // an https thumbnailUrl, since a cached https link is a failed fetch's link and has long since expired.
     // Both are mutated in place and shared by reference across the same WorkItem's re-queued copies.
     childrenAccumulated: any[];
-    thumbnailReuseMap: Map<string, string>;
+    thumbnailReuseMap: Map<string, Pick<GeoItem, 'thumbnailUrl'> | Pick<GeoItem, 'thumbnailFailedAt'>>;
 };
 
 /**
@@ -497,7 +499,9 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
                 if (cacheResult.status === 200 && isValidCachedGeoData(cacheResult.body)) {
                     const cacheGeoData = cacheResult.body;
                     for (const cachedItem of cacheGeoData.geoItems.splice(0, cacheGeoData.immediateChildCount)) {
-                        item.thumbnailReuseMap.set(cachedItem.id, cachedItem.thumbnailUrl);
+                        // Establishes thumbnailReuseMap's INVARIANT: a resolved thumbnail is reused as is; for a failed one we
+                        // keep only its failure time, so it gets this listing's fresh link but still honors the retry cooldown.
+                        item.thumbnailReuseMap.set(cachedItem.id, cachedItem.thumbnailUrl.startsWith('data:') ? { thumbnailUrl: cachedItem.thumbnailUrl } : { thumbnailFailedAt: cachedItem.thumbnailFailedAt });
                     }
                 }
             }
@@ -522,8 +526,8 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
                     stats.bytesProcessed += child.size;
                     if (child.location && child.location.latitude && child.location.longitude && child.thumbnails?.at(0)?.small?.url && child.photo?.takenDateTime) {
                         const folderIndex = 0; // invariant: item.folders[0] will be folder of that workitem
-                        const childItem = createGeoItem(child, folderIndex);
-                        if (item.thumbnailReuseMap.has(childItem.id)) childItem.thumbnailUrl = item.thumbnailReuseMap.get(childItem.id)!;
+                        // Relies on thumbnailReuseMap's INVARIANT: this never replaces the fresh link with an expired one.
+                        const childItem: GeoItem = { ...createGeoItem(child, folderIndex), ...item.thumbnailReuseMap.get(child.id) };
                         item.data.geoItems.push(childItem);
                     }
                 }

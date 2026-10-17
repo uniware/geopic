@@ -345,7 +345,9 @@ export async function indexImpl(progressCallback, photosDriveItem) {
                 if (cacheResult.status === 200 && isValidCachedGeoData(cacheResult.body)) {
                     const cacheGeoData = cacheResult.body;
                     for (const cachedItem of cacheGeoData.geoItems.splice(0, cacheGeoData.immediateChildCount)) {
-                        item.thumbnailReuseMap.set(cachedItem.id, cachedItem.thumbnailUrl);
+                        // Establishes thumbnailReuseMap's INVARIANT: a resolved thumbnail is reused as is; for a failed one we
+                        // keep only its failure time, so it gets this listing's fresh link but still honors the retry cooldown.
+                        item.thumbnailReuseMap.set(cachedItem.id, cachedItem.thumbnailUrl.startsWith('data:') ? { thumbnailUrl: cachedItem.thumbnailUrl } : { thumbnailFailedAt: cachedItem.thumbnailFailedAt });
                     }
                 }
             }
@@ -369,9 +371,8 @@ export async function indexImpl(progressCallback, photosDriveItem) {
                     stats.bytesProcessed += child.size;
                     if (child.location && child.location.latitude && child.location.longitude && child.thumbnails?.at(0)?.small?.url && child.photo?.takenDateTime) {
                         const folderIndex = 0; // invariant: item.folders[0] will be folder of that workitem
-                        const childItem = createGeoItem(child, folderIndex);
-                        if (item.thumbnailReuseMap.has(childItem.id))
-                            childItem.thumbnailUrl = item.thumbnailReuseMap.get(childItem.id);
+                        // Relies on thumbnailReuseMap's INVARIANT: this never replaces the fresh link with an expired one.
+                        const childItem = { ...createGeoItem(child, folderIndex), ...item.thumbnailReuseMap.get(child.id) };
                         item.data.geoItems.push(childItem);
                     }
                 }
