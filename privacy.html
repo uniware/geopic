@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geopic Privacy</title>
+    <meta name="description" content="What Geopic does with your data">
+    <link rel="icon" type="image/png" href="favicon.png">
+    <style>
+        :root {
+            --bg: #ffffff;
+            --fg: #222222;
+            --muted: #666666;
+            --link: #0066cc;
+            --rule: #e4e4e4;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --bg: #161616;
+                --fg: #e6e6e6;
+                --muted: #a0a0a0;
+                --link: #6aa9ff;
+                --rule: #333333;
+            }
+        }
+
+        body {
+            font-family: sans-serif;
+            line-height: 1.55;
+            background: var(--bg);
+            color: var(--fg);
+            max-width: 42em;
+            margin: 0 auto;
+            padding: 24px 16px 48px;
+        }
+
+        h1 {
+            font-size: 1.6em;
+            margin-bottom: 0.2em;
+        }
+
+        h2 {
+            font-size: 1.15em;
+            margin-top: 1.8em;
+            padding-top: 0.8em;
+            border-top: 1px solid var(--rule);
+        }
+
+        a {
+            color: var(--link);
+        }
+
+        .updated {
+            color: var(--muted);
+            margin-top: 0;
+        }
+
+        li {
+            margin-bottom: 0.4em;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Geopic privacy</h1>
+    <p class="updated">Last updated 17 October 2026</p>
+
+    <p>
+        Geopic shows the photos in your OneDrive on a map. It has no server of its own: it runs entirely
+        in your web browser, and your photos only ever travel between your OneDrive and your browser.
+        Geopic doesn't sell data or show ads. The source code is public at
+        <a href="https://github.com/uniware/geopic">github.com/uniware/geopic</a>.
+    </p>
+
+    <h2>Your OneDrive</h2>
+    <p>When you sign in with Microsoft, you give Geopic permission to:</p>
+    <ul>
+        <li><b>Read your files.</b> Microsoft's permission covers all your files, but Geopic only reads your
+            Photos folder: each photo's location, date, file name, folder name, tags and thumbnail, and the
+            full photo when you open it.</li>
+        <li><b>Read and write its own app folder</b> in your OneDrive. Geopic saves its index of your photos
+            there so later visits are fast. It can't change or delete any of your other files.</li>
+    </ul>
+    <p>
+        Your browser also keeps a copy of the index and your sign-in tokens, so you stay signed in.
+        Logging out (the &#x23CF; button) removes both from your browser.
+    </p>
+
+    <h2>Google Maps</h2>
+    <p>
+        The map and the place search are provided by Google Maps. Like any website, Google receives your
+        IP address and which parts of the map you view. When you type a place name into the search box,
+        that text goes to Google to suggest places. Your photos and their locations aren't sent to Google:
+        the map draws them in your browser. Google's handling is covered by the
+        <a href="https://policies.google.com/privacy">Google Privacy Policy</a>.
+    </p>
+
+    <h2>Google Analytics</h2>
+    <p>
+        Geopic uses Google Analytics to count how many people use it. It records page views, scrolling,
+        when someone signs in, visits while signed in, and finishes indexing, with the number of photos
+        rounded to a power of ten (for example "1000+"). It never records your name, email address,
+        file names, photos or photo locations, and the page address it reports never includes the
+        sign-in details.
+    </p>
+    <p>
+        Google Analytics sets cookies and, like any website, sees your IP address and your browser and
+        device type, from which it estimates your rough location. To opt out, use Google's
+        <a href="https://tools.google.com/dlpage/gaoptout">Analytics opt-out browser add-on</a> or a
+        content blocker.
+    </p>
+
+    <h2>Hosting</h2>
+    <p>
+        Geopic's web pages are hosted by Vercel, which keeps standard request logs (such as IP addresses
+        and the pages requested) to run and protect its service.
+    </p>
+
+    <h2>Removing your data</h2>
+    <ul>
+        <li><b>From your browser:</b> log out with the &#x23CF; button.</li>
+        <li><b>From your OneDrive:</b> delete Geopic's folder inside the <i>Apps</i> folder.</li>
+        <li><b>Revoke Geopic's access:</b> for a personal Microsoft account, go to
+            <a href="https://account.live.com/consent/Manage">account.live.com/consent/Manage</a>;
+            for a work or school account, go to
+            <a href="https://myapplications.microsoft.com">myapplications.microsoft.com</a>.</li>
+    </ul>
+
+    <h2>Contact</h2>
+    <p>
+        Questions or requests: open an issue at
+        <a href="https://github.com/uniware/geopic/issues">github.com/uniware/geopic/issues</a>.
+        If this policy changes, the date at the top will change too.
+    </p>
+
+    <p><a href="./">&larr; Back to Geopic</a></p>
+</body>
+
+</html>

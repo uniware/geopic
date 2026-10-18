@@ -399,6 +399,7 @@ function instruct(mode) {
     let instructions;
     const title = '<h1><a href="https://github.com/ljw1004/geopic/blob/main/README.md">Geopic</a></h1> ';
     const sample = g_geoData && g_geoData.id === 'sample-data' ? '<br/><b>Showing sample data for now.</b>' : '';
+    const privacy = ' <a id="privacy-link" href="privacy.html" target="_blank">Privacy</a>'; // required disclosure, e.g. of Google Analytics
     if (mode === 'indexing') {
         instructions = `${title} Indexing photos <span class="spinner"></span><br/><br/>`
             + `A full index takes about 1 hour for 50,000 photos; incremental updates will finish in about 30 seconds. `
@@ -406,16 +407,16 @@ function instruct(mode) {
             + `<pre id="progress">[...preparing bulk indexer...]</pre>`;
     }
     else if (mode === 'fresh') {
-        instructions = `${title} ${g_geoData?.geoItems.length} photos <span id="index">Reindex...</span> <span title="logout" id="logout">\u23CF</span>`;
+        instructions = `${title} ${g_geoData?.geoItems.length} photos <span id="index">Reindex...</span>${privacy} <span title="logout" id="logout">\u23CF</span>`;
     }
     else if (mode === 'stale') {
-        instructions = `${title} <span id="index">Index all new photos...</span> <span title="logout" id="logout">\u23CF</span>${sample}`;
+        instructions = `${title} <span id="index">Index all new photos...</span>${privacy} <span title="logout" id="logout">\u23CF</span>${sample}`;
     }
     else if (localStorage.getItem('access_token')) {
-        instructions = `${title} <span id="index">Index your photo collection...</span> <span title="logout" id="logout">\u23CF</span>${sample}`;
+        instructions = `${title} <span id="index">Index your photo collection...</span>${privacy} <span title="logout" id="logout">\u23CF</span>${sample}`;
     }
     else {
-        instructions = `${title} <span id="login">Login to OneDrive to index your photos...</span>${sample}`;
+        instructions = `${title} <span id="login">Login to OneDrive to index your photos...</span>${privacy}${sample}`;
     }
     document.getElementById('instructions').innerHTML = instructions;
     document.getElementById('login')?.addEventListener('click', onLoginClick);
