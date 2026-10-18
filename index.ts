@@ -60,6 +60,14 @@ let g_geoData: GeoData | undefined;
 // in response to user actions, by installHandlers. It gets read by showCurrentGeodata.
 let g_filter: Filter = { dateRange: undefined, text: undefined };
 
+/**
+ * Reports a Google Analytics event, if index.html set up window.gtag (it does only when config has a GA_MEASUREMENT_ID);
+ * otherwise a no-op. Side effect: a request to Google. Never pass personal data (email, names, file names, ids) here.
+ */
+function track(name: string, params?: Record<string, string | number>): void {
+    (window as unknown as { gtag?: (command: 'event', name: string, params?: Record<string, string | number>) => void }).gtag?.('event', name, params);
+}
+
 // Shown in place of a thumbnail we couldn't fetch (see thumbnail() in showCurrentGeodata): a grey generic-picture icon.
 // Inline, so displaying it never needs a network request.
 const PLACEHOLDER_THUMBNAIL = 'data:image/svg+xml,' + encodeURIComponent(
@@ -103,6 +111,7 @@ export async function onBodyLoad(): Promise<void> {
         } else {
             localStorage.setItem('access_token', r.accessToken);
             localStorage.setItem('refresh_token', r.refreshToken);
+            track('login', { method: 'Microsoft' }); // GA's recommended event name: counts new sign-ins
         }
     }
 
@@ -114,6 +123,7 @@ export async function onBodyLoad(): Promise<void> {
     document.getElementById('instructions')!.innerHTML = '<span class="spinner"></span> checking OneDrive for updates...';
     const r = await authFetch('https://graph.microsoft.com/v1.0/me/drive/special/photos?select=size', noRetryOn429);
     const photosDriveItem = r.ok ? await r.json().catch(() => undefined) : null;
+    if (photosDriveItem) track('signed_in_visit'); // a page load by someone signed in with a working token
     const status = photosDriveItem && g_geoData ? (g_geoData.size === photosDriveItem.size ? 'fresh' : 'stale') : undefined;
     instruct(status);
 
@@ -570,6 +580,9 @@ export async function onIndexClick(): Promise<void> {
     try {
         g_geoData = await indexImpl(progress, photosDriveItem);
         await dbPut(g_geoData);
+        // Only the order of magnitude ('1000+' means 1000-9999), never the exact library size.
+        const n = g_geoData.geoItems.length;
+        track('index_complete', { photos: n === 0 ? '0' : `${10 ** Math.floor(Math.log10(n))}+` });
         showCurrentGeodata();
         instruct('fresh');
         // Only after a successful index (cleanupOldCacheFiles assumes every folder now has its new-scheme cache).

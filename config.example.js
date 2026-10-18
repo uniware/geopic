@@ -8,4 +8,6 @@
  */
 export const CLIENT_ID = 'your-onedrive-app-client-id';
 export const GOOGLE_MAPS_KEY = 'your-google-maps-api-key';
+// Google Analytics 4 measurement ID ('G-...'), or '' to disable analytics.
+export const GA_MEASUREMENT_ID = '';
 //# sourceMappingURL=config.example.js.map

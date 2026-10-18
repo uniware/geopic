@@ -21,14 +21,31 @@
     <script type="module" src="./index.js"></script>
     <script type="module">
         import { onBodyLoad } from './index.js';
-        import { GOOGLE_MAPS_KEY } from './config.js';
+        // Namespace import, so a config.js predating GA_MEASUREMENT_ID (or one without it) just leaves analytics off
+        // rather than failing the whole page with a missing-export error.
+        import * as config from './config.js';
+
+        // Google Analytics, only if configured. Defines window.gtag before onBodyLoad can run (that waits for
+        // DOMContentLoaded), so index.ts's track() never misses an event; events queue in dataLayer until gtag.js loads.
+        if (config.GA_MEASUREMENT_ID) {
+            window.dataLayer = window.dataLayer || [];
+            window.gtag = function () { window.dataLayer.push(arguments); }; // gtag.js requires the arguments object itself
+            gtag('js', new Date());
+            // page_location without the query string: right after sign-in the URL carries Microsoft's ?code=, which must
+            // never reach a third party (onBodyLoad strips it from the address bar, but possibly after this runs).
+            gtag('config', config.GA_MEASUREMENT_ID, { page_location: location.origin + location.pathname });
+            const gaScript = document.createElement('script');
+            gaScript.async = true;
+            gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(config.GA_MEASUREMENT_ID)}`;
+            document.head.appendChild(gaScript);
+        }
         const initMapPromise = new Promise(resolve => window.initMap = resolve); // "defer" guarantees we run before google calls back
         document.addEventListener('DOMContentLoaded', async () => onBodyLoad(await initMapPromise));
 
         // Loaded dynamically (rather than a static <script src> tag) so the key can come from
         // config.ts/config.js, which is gitignored, instead of being committed in this file.
         const mapsScript = document.createElement('script');
-        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=maps,marker,places&loading=async&callback=initMap`;
+        mapsScript.src = `https://maps.googleapis.com/maps/api/js?key=${config.GOOGLE_MAPS_KEY}&libraries=maps,marker,places&loading=async&callback=initMap`;
         document.head.appendChild(mapsScript);
     </script>
     <style>
