@@ -397,7 +397,7 @@ async function installHandlers() {
 }
 function instruct(mode) {
     let instructions;
-    const title = '<h1><a href="https://github.com/ljw1004/geopic/blob/main/README.md">Geopic</a></h1> ';
+    const title = '<h1><a href="https://github.com/uniware/geopic/blob/main/README.md">Geopic</a></h1> ';
     const sample = g_geoData && g_geoData.id === 'sample-data' ? '<br/><b>Showing sample data for now.</b>' : '';
     const privacy = ' <a id="privacy-link" href="privacy.html" target="_blank">Privacy</a>'; // required disclosure, e.g. of Google Analytics
     if (mode === 'indexing') {
