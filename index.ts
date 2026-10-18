@@ -245,7 +245,7 @@ async function installHandlers(): Promise<void> {
     }
 
     const DATE_RANGE_LABEL = document.getElementById('date-range-label')!;
-    HISTOGRAM.onSelectionChange = (selection, isFinal) => {
+    HISTOGRAM.onSelectionChange = (selection, isFinal): void => {
         if (!g_geoData) return;
         g_filter.dateRange = selection;
         // selection.end is the last selected day itself (inclusive, per the Filter.dateRange invariant),
@@ -376,7 +376,7 @@ async function installHandlers(): Promise<void> {
         if (!SUGGESTIONS.contains(e.target as Node) && e.target !== TEXT_FILTER) hidePlaceSuggestions();
     });
 
-    OVERLAY.siblingGetter = (id, direction) => {
+    OVERLAY.siblingGetter = (id, direction): string | undefined => {
         if (!g_geoData || g_geoData.id === 'sample-data') return undefined;
         const items = Array.from(document.getElementById('thumbnails-grid')!.children)
             .map(img => img instanceof HTMLImageElement ? img.getAttribute('data-id') : null)
@@ -512,7 +512,7 @@ function showCurrentGeodata(): void {
         const pointerClass = clickWillZoom ? ['zoomable'] : [];
         const imgClassName = [...visualClass, ...pointerClass].join(' ');
         const spanText = cluster.totalPassFilterItems <= 1 ? undefined : cluster.totalPassFilterItems.toString();
-        const onClick = () => clickWillZoom ? MAP.fitBounds(new google.maps.LatLngBounds(cluster.bounds.sw, cluster.bounds.ne)) : showItem(item);
+        const onClick = (): void => clickWillZoom ? MAP.fitBounds(new google.maps.LatLngBounds(cluster.bounds.sw, cluster.bounds.ne)) : showItem(item);
         const marker = MARKER_POOL.add(item.id, thumbnail(item), imgClassName, spanText, onClick);
         marker.position = item.position;
         marker.zIndex = cluster.totalPassFilterItems;
@@ -527,7 +527,7 @@ function showCurrentGeodata(): void {
         const img = IMG_POOL.add(item.id, thumbnail(item));
         img.title = `${numToDate(item.date).toLocaleDateString(undefined, { timeZone: 'UTC' })} - ${item.name}`; // title is plain text, not HTML, so no escaping
         img.setAttribute('data-id', item.id);
-        img.onclick = () => showItem(item);
+        img.onclick = (): void => showItem(item);
     }
     IMG_POOL.finishAdding();
 

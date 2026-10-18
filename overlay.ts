@@ -52,9 +52,9 @@ export class Overlay {
         this.navRightIcon = this.overlay.querySelector('.overlay-nav-icon.right')!;
 
         // Prevent clicks on error text and controls from closing overlay
-        this.errorText.onclick = (e) => e.stopPropagation();
-        this.imageControls.onclick = (e) => e.stopPropagation();
-        this.imageDescription.onclick = (e) => {
+        this.errorText.onclick = (e): void => e.stopPropagation();
+        this.imageControls.onclick = (e): void => e.stopPropagation();
+        this.imageDescription.onclick = (e): void => {
             // Allow clicks on links to work, but still prevent overlay dismissal
             e.stopPropagation();
             // If clicking on a link within description, dismiss overlay
@@ -70,20 +70,20 @@ export class Overlay {
             const newId = this.siblingGetter ? this.siblingGetter(this.currentId, direction) : undefined;
             if (newId) this.showId(newId);
         };
-        this.navLeftIcon.onclick = (e) => {
+        this.navLeftIcon.onclick = (e): void => {
             e.stopPropagation();
             navigate('prev');
         };
-        this.navRightIcon.onclick = (e) => {
+        this.navRightIcon.onclick = (e): void => {
             e.stopPropagation();
             navigate('next');
         };
 
         // Clicks on error area should close overlay
-        this.overlay.onclick = () => this.dismiss();
+        this.overlay.onclick = (): void => this.dismiss();
 
         // Fullscreen
-        this.imageFullscreen.onclick = (e) => {
+        this.imageFullscreen.onclick = (e): void => {
             e.stopPropagation();
             if (document.fullscreenElement) {
                 document.exitFullscreen();
@@ -280,7 +280,7 @@ export class Overlay {
             const mediaErrorHtml = `Unable to show image.<br/><a href="${driveItem.webUrl}" target="geo-pic-image">Open in OneDrive</a>`;
             return error(mediaErrorHtml, e instanceof ErrorEvent ? e.message : typeof e === 'string' ? e : String(e));
         };
-        const onLoad = (descriptionHtml: string | undefined) => {
+        const onLoad = (descriptionHtml: string | undefined): void => {
             // Time might have passed during media loading, so we have to recheck.
             const media = this.media.get(id);
             if (!media) return;
@@ -294,7 +294,7 @@ export class Overlay {
             media.element = document.createElement('video');
             media.element.className = 'overlay-media';
             media.element.controls = true;
-            media.element.onloadeddata = () => onLoad(undefined);
+            media.element.onloadeddata = (): void => onLoad(undefined);
             media.element.onerror = onError;
             media.element.src = driveItem['@microsoft.graph.downloadUrl'];
         } else {
@@ -304,7 +304,7 @@ export class Overlay {
             const descriptionHtml = `${date} &bull; ${escapeHtml(driveItem.name)}${tags}<br/><a href="${driveItem.webUrl}" target="geopic-image">Click to open full image in OneDrive</a>`;
             media.element = document.createElement('img');
             media.element.className = 'overlay-media';
-            media.element.onload = () => onLoad(descriptionHtml);
+            media.element.onload = (): void => onLoad(descriptionHtml);
             media.element.onerror = onError;
             media.element.src = driveItem.thumbnails[0].large.url;
         }

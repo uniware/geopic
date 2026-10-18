@@ -589,7 +589,7 @@ export async function indexImpl(progressCallback: (p: string[] | GeoItem[]) => v
                 if (data.length < 4 * 1024 * 1024) {
                     toFetch.unshift(createEndWorkItem(parent));
                 } else {
-                    const logpct = (count: number, total: number) => log(parent)(`upload ${Math.floor(count / total * 100)}%`);
+                    const logpct = (count: number, total: number): void => log(parent)(`upload ${Math.floor(count / total * 100)}%`);
                     await multipartUpload(logpct, cacheFilename(parent.path), data);
                     toProcess.unshift({ ...parent, state: 'END', responses: {}, requests: [] });
                 }

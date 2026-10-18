@@ -198,9 +198,9 @@ export async function rateLimitedBlobFetch<T>(f: (count: number, total: number, 
 async function dbOpen(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
         const request = indexedDB.open('geopic-cache', 1);
-        request.onerror = () => reject(request.error);
-        request.onsuccess = () => resolve(request.result);
-        request.onupgradeneeded = () => {
+        request.onerror = (): void => reject(request.error);
+        request.onsuccess = (): void => resolve(request.result);
+        request.onupgradeneeded = (): void => {
             const db = request.result;
             if (db.objectStoreNames.contains('table1')) db.deleteObjectStore('table1');
             db.createObjectStore('table1');
@@ -218,8 +218,8 @@ export async function dbPut(data: any): Promise<void> {
         const cacheStore = transaction.objectStore('table1');
         await new Promise<void>((resolve, reject) => {
             const req = cacheStore.put(data, 1);
-            req.onsuccess = () => resolve();
-            req.onerror = () => reject(req.error);
+            req.onsuccess = (): void => resolve();
+            req.onerror = (): void => reject(req.error);
         });
     } finally {
         db.close();
@@ -236,8 +236,8 @@ export async function dbGet<T>(): Promise<T | undefined> {
         const cacheStore = transaction.objectStore('table1');
         const data = await new Promise<T | undefined>((resolve, reject) => {
             const req = cacheStore.get(1);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
+            req.onsuccess = (): void => resolve(req.result);
+            req.onerror = (): void => reject(req.error);
         });
         return data;
     } finally {
@@ -260,7 +260,7 @@ export async function dbGet<T>(): Promise<T | undefined> {
  * The '=' characters go up to the count1/total fraction of the bar
  * and the '-' characters from there to the (count1+count2)/total fraction of the bar
  */
-export function progressBar(count1: number, count2: number, total: number) {
+export function progressBar(count1: number, count2: number, total: number): string {
     const BAR_WIDTH = 30;
     const equalsCount = Math.floor(count1 / total * BAR_WIDTH);
     const dashCount = Math.floor((count1 + count2) / total * BAR_WIDTH) - equalsCount;

@@ -681,17 +681,17 @@ export class Histogram {
 
         let bi: HistogramBarInfo;
         let barCounts: Map<Numdate, OneDayTally>; // it's called "OneDayTally" but it's really the OneBarTally...
-        const bar = (date: Numdate) => dayInterval({ start: this.bounds.start, end: date }) - 1;
+        const bar = (date: Numdate): number => dayInterval({ start: this.bounds.start, end: date }) - 1;
         if (granularity === 'days') {
             bi = {
                 granularity,
                 bounds: { ...this.bounds },
                 bar,
-                left: (date) => bar(date) / dayCount * chartWidth,
+                left: (date): number => bar(date) / dayCount * chartWidth,
                 width: chartWidth / dayCount,
-                find: (bar) => dateToNum(new Date(numToDate(this.bounds.start).setUTCDate(numToDate(this.bounds.start).getUTCDate() + bar))),
+                find: (bar): Numdate => dateToNum(new Date(numToDate(this.bounds.start).setUTCDate(numToDate(this.bounds.start).getUTCDate() + bar))),
                 count: dayCount,
-                snap: (date) => date,
+                snap: (date): Numdate => date,
             }
             barCounts = dateCounts;
         } else {
@@ -710,16 +710,16 @@ export class Histogram {
                 endSnap.setUTCDate(endSnap.getUTCDate() + 6); // final day of final week
                 bounds = { start: dateToNum(startSnap), end: dateToNum(endSnap) };
                 barCount = dayInterval(bounds) / 7; // an integer, since both ends are snapped to the week grid
-                const bar = (date: Numdate) => (dayInterval({ start: bounds.start, end: date }) - 1) / 7;
+                const bar = (date: Numdate): number => (dayInterval({ start: bounds.start, end: date }) - 1) / 7;
                 bi = {
                     granularity,
                     bounds: { ...bounds }, // the snapped bounds, per the HistogramBarInfo.bounds invariant: this.bounds would drop the first bar, whose key precedes this.bounds.start
                     bar,
-                    left: (date) => bar(date) / barCount * chartWidth,
+                    left: (date): number => bar(date) / barCount * chartWidth,
                     width: chartWidth / barCount,
-                    find: (bar) => dateToNum(new Date(numToDate(bounds.start).setUTCDate(numToDate(bounds.start).getUTCDate() + bar * 7))),
+                    find: (bar): Numdate => dateToNum(new Date(numToDate(bounds.start).setUTCDate(numToDate(bounds.start).getUTCDate() + bar * 7))),
                     count: barCount,
-                    snap: (date) => {
+                    snap: (date): Numdate => {
                         const d = numToDate(bounds.start);
                         d.setUTCDate(d.getUTCDate() + Math.floor((dayInterval({ start: bounds.start, end: date }) - 1) / 7) * 7);
                         return dateToNum(d);
@@ -731,19 +731,19 @@ export class Histogram {
                     end: Math.floor(this.bounds.end / 100) * 100 + 31, // this over-approximation is safe because we only use it for bounds checking
                 };
                 barCount = monthInterval(bounds);
-                const bar = (date: Numdate) => (monthInterval({ start: bounds.start, end: date }) - 1);
+                const bar = (date: Numdate): number => (monthInterval({ start: bounds.start, end: date }) - 1);
                 bi = {
                     granularity,
                     bounds,
                     bar,
-                    left: (date) => bar(date) / barCount * chartWidth,
+                    left: (date): number => bar(date) / barCount * chartWidth,
                     width: chartWidth / barCount,
-                    find: (bar) => {
+                    find: (bar): Numdate => {
                         const month = Math.floor((bounds.start / 100) % 100) - 1 + bar; // 0-based, might be >12 (but we'll modulo it next)
                         return (Math.floor(bounds.start / 10000) + Math.floor(month / 12)) * 10000 + (month % 12 + 1) * 100 + 1; // 1st of the month
                     },
                     count: barCount,
-                    snap: (date: Numdate) => Math.floor(date / 100) * 100 + 1,
+                    snap: (date: Numdate): Numdate => Math.floor(date / 100) * 100 + 1,
                 }
             }
             // Now compute barCounts as aggregates from dateCounts:
